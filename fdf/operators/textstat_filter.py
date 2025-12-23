@@ -34,23 +34,24 @@ class TextstatFilter(BatchOperator):
     Uses textstat to calculate text statistics and filters rows where all metrics
     fall within specified min/max thresholds.
 
-    Parameters:
-        - column (str, optional): Column name to process. Defaults to "text".
-        - min_scores (dict, optional): Minimum thresholds for each metric.
-        - max_scores (dict, optional): Maximum thresholds for each metric.
-        - metrics (list[str], optional): List of metrics to use for filtering.
-          Available metrics:
-          - flesch_reading_ease
-          - automated_readability_index
-          - aggregate_reading_level
-          - syllable_count
-          - lexicon_count
-          - sentence_count
-          - character_count
-          - letter_count
-          - polysyllable_count
-          - monosyllable_count
-          - difficult_words
+    The `apply` method accepts a `params` dict with:
+    - column (str): Column name to process. Defaults to "text".
+    - min_scores (dict): Minimum thresholds for each metric.
+    - max_scores (dict): Maximum thresholds for each metric.
+    - metrics (list[str]): List of metrics to use for filtering.
+
+    Available metrics:
+    - flesch_reading_ease
+    - automated_readability_index
+    - aggregate_reading_level
+    - syllable_count
+    - lexicon_count
+    - sentence_count
+    - character_count
+    - letter_count
+    - polysyllable_count
+    - monosyllable_count
+    - difficult_words
 
     Reference: https://github.com/shivam5992/textstat
     """

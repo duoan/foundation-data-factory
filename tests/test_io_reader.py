@@ -172,11 +172,20 @@ def test_read_input_single_source(tmp_path: Path) -> None:
     assert len(result) == 3
 
 
-def test_read_input_mixture_not_implemented() -> None:
+def test_read_input_mixture_not_implemented(tmp_path: Path) -> None:
     """Test that mixture input raises NotImplementedError."""
+    from fdf.config.schema import DatasetSourceConfig, DataSourceConfig
+
+    # Create a mixture input config
+    test_path = str(tmp_path / "test")
     input_cfg = InputConfig(
-        type="mixture",
-        datasets=[],
+        mixture=[
+            DatasetSourceConfig(
+                name="test",
+                source=DataSourceConfig(type="parquet", path=test_path),
+                weight=1.0,
+            ),
+        ],
     )
     with pytest.raises(NotImplementedError, match="Mixture input not yet implemented"):
         read_input(input_cfg)
