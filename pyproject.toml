@@ -44,6 +44,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["fdf"]
 
+[project.scripts]
+fdf = "fdf.cli.main:main"
+
 [tool.ty.environment]
 python = "./.venv"
 python-version = "3.10"
