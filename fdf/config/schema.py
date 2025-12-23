@@ -27,6 +27,7 @@ class OperatorInstanceConfig(BaseModel):
 
     id: str
     kind: str
+    op: str | None = None
 
     @field_validator("kind")
     @classmethod

@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "pyarrow>=18.0.0",
     "datasets>=2.21.0",
+    "daft>=0.4.0",
 ]
 classifiers = [
     "Intended Audience :: Developers",
@@ -86,7 +87,8 @@ select = [
     # mccabe
     "C90",
     # pycodestyle
-    "E", "W",
+    "E",
+    "W",
     # pyflakes
     "F",
     # pygrep-hooks
