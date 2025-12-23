@@ -80,6 +80,8 @@ def run_stage_local(
     data_dict = table.to_pydict()
     output_ds = hfds.Dataset.from_dict(data_dict)
 
+    artifact_entries: list[dict] = []
+
     # Optional materialization
     if stage.materialize:
         base = Path(stage.materialize.path)
@@ -99,16 +101,21 @@ def run_stage_local(
             "output_rows": table.num_rows,
             "shards": [shard_path.as_posix()],
         }
-        manifest_path.write_text(json.dumps(manifest, indent=2))
-
-        # Return freshly written dataset
-        materialized_ds = hfds.Dataset.from_parquet(shard_path.as_posix())
 
         for hook in hooks:
             hook.on_partition_end(stage_name=stage.name, rows=table.num_rows)
             hook.on_stage_end(stage_name=stage.name, output_rows=table.num_rows)
+            artifacts = hook.manifest_artifacts()
+            if artifacts:
+                artifact_entries.append(artifacts)
 
-        return materialized_ds
+        if artifact_entries:
+            manifest["artifacts"] = artifact_entries
+
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
+        # Return freshly written dataset
+        return hfds.Dataset.from_parquet(shard_path.as_posix())
 
     for hook in hooks:
         hook.on_partition_end(stage_name=stage.name, rows=table.num_rows)

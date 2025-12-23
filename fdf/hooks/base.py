@@ -15,3 +15,6 @@ class BaseHook:
 
     def on_stage_end(self, *, stage_name: str, output_rows: int) -> None:  # pragma: no cover - default no-op
         return None
+
+    def manifest_artifacts(self) -> dict | None:  # pragma: no cover - default no-op
+        return None
