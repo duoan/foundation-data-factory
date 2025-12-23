@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from importlib.metadata import PackageNotFoundError, version
+
+from fdf.config.schema import PipelineConfig
 
 PROJECT_NAME = "foundation-data-factory"
 
@@ -30,6 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
     # `fdf version`
     subparsers.add_parser("version", help="Show the installed FoundationDataFactory version.")
 
+    # `fdf validate pipeline.yaml`
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate a pipeline YAML configuration file.",
+    )
+    validate_parser.add_argument(
+        "pipeline_yaml",
+        help="Path to the pipeline YAML configuration file.",
+    )
+
     return parser
 
 
@@ -41,6 +54,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "version":
         print(_get_version())
+        return 0
+
+    if args.command == "validate":
+        try:
+            PipelineConfig.from_yaml_file(args.pipeline_yaml)
+        except Exception as exc:
+            print(f"Validation failed: {exc}", file=sys.stderr)
+            return 1
+
         return 0
 
     # If no subcommand is provided, show help.
