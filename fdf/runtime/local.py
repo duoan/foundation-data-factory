@@ -10,6 +10,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from fdf.config.schema import StageConfig
+from fdf.hooks.base import BaseHook
 from fdf.operators.registry import get_operator_class
 
 
@@ -29,6 +30,7 @@ def _ensure_dataset(dataset: Any) -> hfds.Dataset:
 def run_stage_local(
     dataset: hfds.Dataset,
     stage: StageConfig,
+    hooks: list[BaseHook] | None = None,
 ) -> hfds.Dataset:
     """Execute a single stage locally using Daft and Arrow.
 
@@ -43,6 +45,10 @@ def run_stage_local(
     """
 
     dataset = _ensure_dataset(dataset)
+    hooks = hooks or []
+
+    for hook in hooks:
+        hook.on_stage_start(stage_name=stage.name)
 
     # 1. HF Dataset → Arrow
     # There is no stable public HF API to expose the underlying Arrow table,
@@ -96,6 +102,16 @@ def run_stage_local(
         manifest_path.write_text(json.dumps(manifest, indent=2))
 
         # Return freshly written dataset
-        return hfds.Dataset.from_parquet(shard_path.as_posix())
+        materialized_ds = hfds.Dataset.from_parquet(shard_path.as_posix())
+
+        for hook in hooks:
+            hook.on_partition_end(stage_name=stage.name, rows=table.num_rows)
+            hook.on_stage_end(stage_name=stage.name, output_rows=table.num_rows)
+
+        return materialized_ds
+
+    for hook in hooks:
+        hook.on_partition_end(stage_name=stage.name, rows=table.num_rows)
+        hook.on_stage_end(stage_name=stage.name, output_rows=table.num_rows)
 
     return output_ds
