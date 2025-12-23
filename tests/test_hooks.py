@@ -3,22 +3,22 @@ from __future__ import annotations
 import datasets as hfds
 
 from fdf.config.schema import PipelineConfig
-from fdf.hooks.base import BaseHook
+from fdf.hooks.base import Hook
 from fdf.runtime.local import run_stage_local
 
 
-class RecordingHook(BaseHook):
+class RecordingHook(Hook):
     def __init__(self) -> None:
         self.events: list[tuple[str, dict]] = []
 
-    def on_stage_start(self, *, stage_name: str) -> None:
+    def on_stage_start(self, stage_name: str) -> None:
         self.events.append(("start", {"stage": stage_name}))
 
-    def on_partition_end(self, *, stage_name: str, rows: int) -> None:
-        self.events.append(("partition_end", {"stage": stage_name, "rows": rows}))
+    def on_partition_end(self, table) -> None:
+        self.events.append(("partition_end", {"rows": table.num_rows}))
 
-    def on_stage_end(self, *, stage_name: str, output_rows: int) -> None:
-        self.events.append(("end", {"stage": stage_name, "rows": output_rows}))
+    def on_stage_end(self, result: hfds.Dataset) -> None:
+        self.events.append(("end", {"rows": len(result)}))
 
 
 def _make_stage():

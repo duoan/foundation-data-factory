@@ -1,6 +1,5 @@
-"""Hooks framework for observability in FoundationDataFactory."""
+"""Hooks framework for FDF runtimes."""
 
-from fdf.hooks.base import BaseHook
-from fdf.hooks.whylogs_hook import WhyLogsHook
+from fdf.hooks.base import Hook
 
-__all__ = ["BaseHook", "WhyLogsHook"]
+__all__ = ["Hook"]

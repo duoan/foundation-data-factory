@@ -1,71 +1,75 @@
 from __future__ import annotations
 
 import json
-import sys
+import types
 from pathlib import Path
-from types import SimpleNamespace
 
 import datasets as hfds
 
 from fdf.config.schema import PipelineConfig
-from fdf.hooks.whylogs_hook import WhyLogsHook
+from fdf.hooks.whylogs_hook import WhylogsHook
 from fdf.runtime.local import run_stage_local
 
 
-def _make_stage(materialize_path: Path):
-    yaml_str = f"""
-    name: test-whylogs
-    input:
-      type: mixture
-    stages:
-      - name: stage-a
-        operators:
-          - id: refine.passthrough
-            kind: refiner
-            op: passthrough-refiner
-        materialize:
-          path: "{materialize_path.as_posix()}"
-          mode: overwrite
-    output:
-      type: parquet
-    """
-    return PipelineConfig.from_yaml_str(yaml_str).stages[0]
+def _stage_with_materialize(tmp_path: Path):
+    cfg = PipelineConfig.from_yaml_str(
+        f"""
+        name: "whylogs-test"
+        input:
+          type: "mixture"
+        stages:
+          - name: "stage-a"
+            operators:
+              - id: "refine.passthrough"
+                kind: "refiner"
+                op: "passthrough-refiner"
+            materialize:
+              path: "{tmp_path.as_posix()}"
+              mode: "overwrite"
+        output:
+          type: "parquet"
+        """
+    )
+    return cfg.stages[0]
 
 
-def test_whylogs_hook_disabled_when_missing(tmp_path, monkeypatch):
-    # Ensure whylogs is not importable
-    monkeypatch.setitem(sys.modules, "whylogs", None)
-    stage = _make_stage(tmp_path)
-    dataset = hfds.Dataset.from_dict({"x": [1, 2]})
+def test_whylogs_hook_no_dependency_is_noop(monkeypatch, tmp_path):
+    monkeypatch.setattr("fdf.hooks.whylogs_hook.import_module", lambda name: (_ for _ in ()).throw(ModuleNotFoundError))
 
-    hook = WhyLogsHook(output_dir=tmp_path / "profiles")
+    hook = WhylogsHook(output_dir=tmp_path.as_posix(), columns=["x"])
+    stage = _stage_with_materialize(tmp_path)
+    ds = hfds.Dataset.from_dict({"x": [1, 2, 3]})
 
-    run_stage_local(dataset, stage, hooks=[hook])
+    result = run_stage_local(ds, stage, hooks=[hook])
+
+    assert list(result["x"]) == [1, 2, 3]
+    assert not hook.enabled
+    assert not hook.artifacts
+    assert not any(tmp_path.glob("**/*profile*"))
+
+
+def test_whylogs_hook_writes_artifact_and_manifest(monkeypatch, tmp_path):
+    class FakeProfile:
+        def write(self, path: str):
+            Path(path).write_text("profile")
+
+    def fake_log(df):
+        return FakeProfile()
+
+    fake_module = types.SimpleNamespace(log=fake_log)
+    monkeypatch.setattr("fdf.hooks.whylogs_hook.import_module", lambda name: fake_module)
+
+    hook = WhylogsHook(output_dir=tmp_path.as_posix(), columns=["x"])
+    stage = _stage_with_materialize(tmp_path)
+    ds = hfds.Dataset.from_dict({"x": [5, 6]})
+
+    result = run_stage_local(ds, stage, hooks=[hook])
+
+    assert list(result["x"]) == [5, 6]
+    assert hook.enabled
+    assert hook.artifacts
+    profile_path = Path(hook.artifacts[0])
+    assert profile_path.exists()
 
     manifest = json.loads((tmp_path / "manifest.json").read_text())
-    assert "artifacts" not in manifest
-    assert not (tmp_path / "profiles").exists() or not list((tmp_path / "profiles").glob("*.json"))
-
-
-def test_whylogs_hook_writes_artifact_and_manifest_entry(tmp_path, monkeypatch):
-    # Provide a dummy whylogs module to enable the hook without installing the package.
-    monkeypatch.setitem(sys.modules, "whylogs", SimpleNamespace())
-
-    stage = _make_stage(tmp_path)
-    dataset = hfds.Dataset.from_dict({"x": [1, 2, 3]})
-
-    profile_dir = tmp_path / "profiles"
-    hook = WhyLogsHook(output_dir=profile_dir)
-
-    run_stage_local(dataset, stage, hooks=[hook])
-
-    manifest = json.loads((tmp_path / "manifest.json").read_text())
-    artifacts = manifest.get("artifacts", [])
-    assert len(artifacts) == 1
-    assert "whylogs" in artifacts[0]
-    artifact_path = Path(artifacts[0]["whylogs"][0])
-    assert artifact_path.exists()
-
-    payload = json.loads(artifact_path.read_text())
-    assert payload["stage"] == "stage-a"
-    assert payload["rows"] == 3
+    assert profile_path.as_posix() in manifest.get("hook_artifacts", [])

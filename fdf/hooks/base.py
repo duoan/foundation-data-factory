@@ -1,20 +1,22 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from typing import Any
 
-class BaseHook:
-    """Base class for runtime hooks.
+import pyarrow as pa
 
-    Hooks are optional and must not affect execution semantics.
-    """
 
-    def on_stage_start(self, *, stage_name: str) -> None:  # pragma: no cover - default no-op
-        return None
+class Hook(ABC):
+    """Base class for runtime hooks."""
 
-    def on_partition_end(self, *, stage_name: str, rows: int) -> None:  # pragma: no cover - default no-op
-        return None
+    @abstractmethod
+    def on_stage_start(self, stage_name: str) -> None:
+        """Called when a stage starts."""
 
-    def on_stage_end(self, *, stage_name: str, output_rows: int) -> None:  # pragma: no cover - default no-op
-        return None
+    @abstractmethod
+    def on_partition_end(self, table: pa.Table) -> None:
+        """Called after a partition/batch is processed."""
 
-    def manifest_artifacts(self) -> dict | None:  # pragma: no cover - default no-op
-        return None
+    @abstractmethod
+    def on_stage_end(self, result: Any) -> None:
+        """Called after the stage finishes."""
