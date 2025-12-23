@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import pyarrow as pa
+from typing import Any
+
+from daft.recordbatch.micropartition import MicroPartition
 
 from .base import BatchOperator
 from .registry import register_operator
@@ -18,5 +20,6 @@ class PassthroughRefiner(BatchOperator):
     version = "0.0.1"
     kind = "refiner"
 
-    def apply(self, batch: pa.Table) -> pa.Table:
-        return batch
+    def apply(self, batch: MicroPartition, params: dict[str, Any] | None = None) -> None:
+        """Passthrough: no-op, batch unchanged."""
+        pass

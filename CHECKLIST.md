@@ -123,7 +123,8 @@
 ### Hard rules
 
 * ❌ Operator must NOT see HF Dataset
-* ❌ Operator input/output = Arrow / columnar batch
+* ❌ Operator input = MicroPartition (in-place modification, returns None)
+* ❌ Operator must NOT collect data to driver - work on partitions distributedly
 
 ---
 
@@ -166,7 +167,7 @@
 
 ### Tasks
 
-* [ ] `src/fdf/runtime/local.py`
+* [ ] `src/fdf/runtime/executor.py`
 * [ ] Convert HF Dataset → Arrow batches
 * [ ] Convert Arrow → Daft DataFrame
 * [ ] Apply operators sequentially
@@ -249,47 +250,6 @@
 * ❌ No full scan for ratios
 
 ---
-
-## PR7 — Hooks Framework
-
-**Goal:** observability without coupling
-
-### Tasks
-
-* [ ] `src/fdf/hooks/base.py`
-
-  * `on_stage_start`
-  * `on_partition_end`
-  * `on_stage_end`
-* [ ] Runtime calls hooks
-* [ ] Hooks are optional
-
-### Tests
-
-* [ ] dummy hook receives calls
-
-### Hard rules
-
-* ❌ Hooks must not affect execution
-
----
-
-## PR8 — whylogs Hook (Optional Dependency)
-
-**Goal:** stage-level profiling
-
-### Tasks
-
-* [ ] `src/fdf/hooks/whylogs_hook.py`
-* [ ] If whylogs not installed → disable silently
-* [ ] Profile selected columns
-* [ ] Write artifacts
-* [ ] Add paths to manifest
-
-### Tests
-
-* [ ] with whylogs installed
-* [ ] without whylogs installed
 
 ---
 

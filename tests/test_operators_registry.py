@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pyarrow as pa
 import pytest
 
 from fdf.operators.base import BatchOperator
@@ -19,8 +18,11 @@ class DummyBatchOperator(BatchOperator):
     version = "0.0.test"
     kind = "refiner"
 
-    def apply(self, batch: pa.Table) -> pa.Table:  # pragma: no cover - unreachable in registry tests
-        return batch
+    def apply(
+        self, batch, params=None
+    ) -> None:  # pragma: no cover - unreachable in registry tests  # type: ignore[override]
+        """In-place operator (no-op for dummy)."""
+        pass
 
 
 def test_register_and_lookup_operator_class():

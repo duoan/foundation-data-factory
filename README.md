@@ -96,11 +96,6 @@ stages:
         op: "ThresholdFilter"
         params: { field: "text_quality_score", ge: 0.6 }
 
-    profile:   # optional (whylogs)
-      enabled: true
-      columns: ["text_quality_score", "text_len"]
-      segments: ["__fdf__/dropped_by", "source_name"]
-
   - name: "embed_and_caption"
     materialize:
       path: "s3://fdf-runs/{{run_id}}/embed_and_caption/"
@@ -148,7 +143,6 @@ Every stage emits a manifest.json with:
 - operator versions + parameters
 - input/output counts and accept/reject stats
 - output shard paths
-- optional profiles (whylogs)
 - run metadata (seed, code version, config hash)
 
 FDF also writes standard provenance fields into the dataset:
@@ -162,10 +156,11 @@ FDF also writes standard provenance fields into the dataset:
 
 ## Optional Integrations
 
-- whylogs: stage-level profiling and drift-friendly metrics
-- Dagster: orchestration and asset-based lineage (wrapper package)
+- **Dagster**: orchestration and asset-based lineage (wrapper package)
+- **LangKit**: Text metrics and filtering operators (install with `pip install langkit[all]`)
+- **NLTK**: Text processing operators like stopword removal (install with `pip install nltk`)
 
-Integrations are optional and implemented as plugins/hooks.
+Integrations are optional and can be added as needed. Operators that require these dependencies will raise helpful error messages if the dependencies are missing.
 
 ## Predefined Pipelines
 

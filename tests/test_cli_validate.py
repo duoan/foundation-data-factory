@@ -20,12 +20,15 @@ def test_cli_validate_succeeds_for_valid_pipeline(tmp_path):
 
         stages:
           - name: "stage-a"
+            input:
+              type: "mixture"
             operators:
               - id: "op-a"
                 kind: "score"
-
-        output:
-          type: "parquet"
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
     """
     pipeline_path = _write_yaml(tmp_path, yaml_content)
 
@@ -44,12 +47,21 @@ def test_cli_validate_fails_for_invalid_pipeline(tmp_path, capsys):
 
         stages:
           - name: "dup-stage"
+            input:
+              type: "mixture"
             operators: []
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
           - name: "dup-stage"
+            input:
+              type: "mixture"
             operators: []
-
-        output:
-          type: "parquet"
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
     """
     pipeline_path = _write_yaml(tmp_path, yaml_content)
 

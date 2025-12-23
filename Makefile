@@ -13,7 +13,7 @@ check: ## Run code quality tools.
 	@echo "🚀 Static type checking: Running ty"
 	@uv run ty check
 	@echo "🚀 Checking for obsolete dependencies: Running deptry"
-	@uv run deptry .
+	@uv run deptry . --per-rule-ignores DEP003=langkit
 
 .PHONY: test
 test: ## Test the code with pytest

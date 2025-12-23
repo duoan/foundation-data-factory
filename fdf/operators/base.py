@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
 
-import pyarrow as pa
+if TYPE_CHECKING:
+    from daft.recordbatch.micropartition import MicroPartition
 
 
 class BatchOperator(ABC):
@@ -10,9 +12,16 @@ class BatchOperator(ABC):
 
     Important constraints (from DESIGN/CHECKLIST):
 
-    - Operators must operate on **columnar / Arrow batches**, not on
-      Hugging Face Datasets directly.
+    - Operators must operate on **columnar batches**, not on Hugging Face Datasets directly.
     - Public operator API is batch-in → batch-out.
+    - Operators work with Daft's internal representation (MicroPartition) to avoid
+      unnecessary conversions when executing within Daft's data plane.
+
+    Design rationale:
+    - Since Daft is the internal data plane, operators should work directly with
+      Daft's MicroPartition to avoid MicroPartition <-> Arrow Table conversions.
+    - Arrow Table is still supported for compatibility with external systems,
+      but MicroPartition is preferred for Daft-native execution.
     """
 
     #: Human-readable operator name, used for registration.
@@ -28,10 +37,16 @@ class BatchOperator(ABC):
     paper: str | None = None
 
     @abstractmethod
-    def apply(self, batch: pa.Table) -> pa.Table:
-        """Apply the operator to a single Arrow batch.
+    def apply(self, batch: MicroPartition, params: dict[str, Any] | None = None) -> None:
+        """Apply the operator to a batch in-place.
+
+        Args:
+            batch: Daft's MicroPartition to modify in-place
+            params: Optional dictionary of operator-specific parameters from config
 
         Implementations must:
-        - treat the input batch as immutable
-        - return a new or reused Arrow table representing the output batch
+        - modify the batch in-place
+        - not return anything (None)
+        - work directly with MicroPartition to avoid conversions
+        - use params to configure behavior (e.g., column names, thresholds)
         """

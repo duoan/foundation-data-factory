@@ -13,6 +13,7 @@ dependencies = [
     "datasets>=2.21.0",
     "daft>=0.4.0",
     "ray>=2.0.0",
+    "textstat>=0.7.12",
 ]
 classifiers = [
     "Intended Audience :: Developers",

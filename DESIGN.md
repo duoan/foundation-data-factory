@@ -159,14 +159,13 @@ Design constraint:
 
 ---
 
-### 2.6 Optional Integrations (Plugins)
+### 2.6 Optional Integrations (Future)
 
-* **whylogs**: data profiling and drift metrics
 * **Dagster**: orchestration / control-plane wrapper
 
 Design constraint:
 
-* These are optional hooks
+* These are optional integrations
 * Core execution must not depend on them
 
 ---
@@ -299,6 +298,19 @@ All operators must:
 * declare output fields they write
 * preserve dataset schema consistency
 * write provenance metadata
+* operate **in-place** on `MicroPartition` objects (modify the partition directly, return `None`)
+
+**Operator Interface:**
+
+```python
+def apply(self, batch: MicroPartition) -> None:
+    """Apply operator in-place to a MicroPartition."""
+    # Modify batch directly
+    # Do not return anything
+```
+
+Operators work directly with Daft's `MicroPartition` to avoid unnecessary conversions.
+Each partition is processed independently on workers, keeping data distributed.
 
 ---
 
@@ -475,20 +487,14 @@ Reserved fields:
 
 ---
 
-## 10. Hooks & Plugins
+## 10. Optional Integrations (Future)
 
-Hooks:
+Future integrations may include:
 
-* `on_stage_start`
-* `on_partition_end`
-* `on_stage_end`
+* **Dagster**: orchestration / control-plane wrapper
+* **Monitoring**: stage-level metrics and observability
 
-Plugins:
-
-* whylogs profiling
-* Dagster orchestration wrapper
-
-Hooks must not affect core execution semantics.
+These integrations must not affect core execution semantics.
 
 ---
 
@@ -507,7 +513,6 @@ foundation-data-factory/
     mixture/
     operators/
     lineage/
-    hooks/
   pipelines/
   tests/
 ```

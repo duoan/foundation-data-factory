@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pyarrow as pa
+from daft.recordbatch.micropartition import MicroPartition
 
 from fdf.operators.passthrough import PassthroughRefiner
 
@@ -13,11 +14,17 @@ def test_passthrough_refiner_metadata():
     assert isinstance(op.version, str)
 
 
-def test_passthrough_refiner_returns_same_batch():
+def test_passthrough_refiner_modifies_in_place():
+    """Test that passthrough refiner applies in-place (no-op for passthrough)."""
     table = pa.table({"x": [1, 2, 3]})
+    partition = MicroPartition.from_arrow(table)
     op = PassthroughRefiner()
 
-    result = op.apply(table)
+    # Apply operator in-place (should not modify for passthrough)
+    op.apply(partition)
 
-    # Passthrough should not modify the batch.
-    assert result is table
+    # Verify partition is unchanged (passthrough is no-op)
+    result_table = partition.to_arrow()
+    assert result_table.num_rows == 3
+    # Convert PyArrow array to Python list for comparison
+    assert result_table["x"].to_pylist() == [1, 2, 3]

@@ -4,6 +4,7 @@ import argparse
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
+from fdf.api import run_pipeline_from_yaml
 from fdf.config.schema import PipelineConfig
 
 PROJECT_NAME = "foundation-data-factory"
@@ -43,6 +44,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to the pipeline YAML configuration file.",
     )
 
+    # `fdf run pipeline.yaml`
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Run a pipeline from YAML configuration file.",
+    )
+    run_parser.add_argument(
+        "pipeline_yaml",
+        help="Path to the pipeline YAML configuration file.",
+    )
+    run_parser.add_argument(
+        "--ray-address",
+        help="Ray cluster address (e.g., ray://127.0.0.1:10001). If not provided, runs locally.",
+    )
+
     return parser
 
 
@@ -59,8 +74,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         try:
             PipelineConfig.from_yaml_file(args.pipeline_yaml)
+            print(f"✓ Pipeline configuration is valid: {args.pipeline_yaml}")
         except Exception as exc:
             print(f"Validation failed: {exc}", file=sys.stderr)
+            return 1
+
+        return 0
+
+    if args.command == "run":
+        try:
+            result = run_pipeline_from_yaml(args.pipeline_yaml, ray_address=getattr(args, "ray_address", None))
+            print(f"✓ Pipeline completed successfully. Output dataset has {len(result)} rows.")
+        except Exception as exc:
+            print(f"Pipeline execution failed: {exc}", file=sys.stderr)
             return 1
 
         return 0

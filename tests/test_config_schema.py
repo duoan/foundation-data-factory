@@ -18,17 +18,17 @@ def make_minimal_pipeline_yaml() -> str:
         """
         name: "test-pipeline"
 
-        input:
-          type: "mixture"
-
         stages:
           - name: "stage-a"
+            input:
+              type: "mixture"
             operators:
               - id: "score.text_quality"
                 kind: "score"
-
-        output:
-          type: "parquet"
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
         """
     ).strip()
 
@@ -52,17 +52,23 @@ def test_stage_names_must_be_unique():
         """
         name: "test-duplicate-stages"
 
-        input:
-          type: "mixture"
-
         stages:
           - name: "dup-stage"
+            input:
+              type: "mixture"
             operators: []
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
           - name: "dup-stage"
+            input:
+              type: "mixture"
             operators: []
-
-        output:
-          type: "parquet"
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
         """
     ).strip()
 
@@ -75,19 +81,19 @@ def test_operator_ids_must_be_unique_within_stage():
         """
         name: "test-duplicate-ops"
 
-        input:
-          type: "mixture"
-
         stages:
           - name: "stage-a"
+            input:
+              type: "mixture"
             operators:
               - id: "op-1"
                 kind: "score"
               - id: "op-1"
                 kind: "filter"
-
-        output:
-          type: "parquet"
+            output:
+              source:
+                type: "parquet"
+                path: "/tmp/test-output"
         """
     ).strip()
 
@@ -108,11 +114,17 @@ def test_operator_kind_must_be_valid():
         OperatorInstanceConfig(id="bad-op", kind="invalid-kind")
 
 
-def test_stage_config_requires_unique_operator_ids():
+def test_stage_config_requires_unique_operator_ids(tmp_path):
     operators = [
         OperatorInstanceConfig(id="dup", kind="score"),
         OperatorInstanceConfig(id="dup", kind="score"),
     ]
 
+    from fdf.config.schema import DataSourceConfig, OutputConfig
+
     with pytest.raises(ValueError, match="Operator ids must be unique per stage"):
-        StageConfig(name="stage-a", operators=operators)
+        StageConfig(
+            name="stage-a",
+            operators=operators,
+            output=OutputConfig(source=DataSourceConfig(type="parquet", path=str(tmp_path / "test"))),
+        )

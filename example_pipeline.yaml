@@ -1,0 +1,30 @@
+name: "example_pipeline"
+
+stages:
+  # Stage 1: Read directly from Hugging Face dataset and apply passthrough operator
+  - name: "process_data"
+    input:
+      source:
+        type: "huggingface"
+        path: "imdb"  # IMDb movie reviews dataset from Hugging Face
+        streaming: false  # Load full dataset
+    operators:
+      - id: "passthrough_1"
+        kind: "refiner"
+        op: "passthrough-refiner"
+    output:
+      source:
+        type: "parquet"
+        path: "./example_data/stage1_output"
+
+  # Stage 2: Read from stage1 output and process again
+  # Note: input is auto-configured from previous stage's output
+  - name: "process_again"
+    operators:
+      - id: "passthrough_2"
+        kind: "refiner"
+        op: "passthrough-refiner"
+    output:
+      source:
+        type: "parquet"
+        path: "./example_data/output"
