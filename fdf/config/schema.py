@@ -43,6 +43,7 @@ class StageConfig(BaseModel):
 
     name: str
     operators: list[OperatorInstanceConfig] = Field(default_factory=list)
+    materialize: MaterializeConfig | None = None
 
     @model_validator(mode="after")
     def ensure_unique_operator_ids(self) -> StageConfig:
@@ -102,3 +103,27 @@ class PipelineConfig(BaseModel):
         with open(path, encoding="utf-8") as f:
             content = f.read()
         return cls.from_yaml_str(content)
+
+
+class MaterializeConfig(BaseModel):
+    """Stage materialization configuration."""
+
+    path: str
+    mode: str = "incremental"  # incremental | overwrite
+
+
+class InvalidMaterializeModeError(ValueError):
+    """Raised when an unsupported materialize mode is provided."""
+
+    def __init__(self, mode: str) -> None:
+        super().__init__(f"Invalid materialize.mode: {mode}. Use 'incremental' or 'overwrite'.")
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        if value not in {"incremental", "overwrite"}:
+            raise InvalidMaterializeModeError(value)
+        return value
+
+
+StageConfig.model_rebuild()

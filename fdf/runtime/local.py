@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import daft
 import datasets as hfds
 import pyarrow as pa
+import pyarrow.parquet as pq
 
 from fdf.config.schema import StageConfig
 from fdf.operators.registry import get_operator_class
@@ -69,4 +72,30 @@ def run_stage_local(
 
     # 4. Arrow → HF Dataset
     data_dict = table.to_pydict()
-    return hfds.Dataset.from_dict(data_dict)
+    output_ds = hfds.Dataset.from_dict(data_dict)
+
+    # Optional materialization
+    if stage.materialize:
+        base = Path(stage.materialize.path)
+        base.mkdir(parents=True, exist_ok=True)
+        manifest_path = base / "manifest.json"
+        shard_path = base / "data.parquet"
+
+        if stage.materialize.mode == "incremental" and manifest_path.exists() and shard_path.exists():
+            # Skip execution, return existing output
+            return hfds.Dataset.from_parquet(shard_path.as_posix())
+
+        # Write shard
+        pq.write_table(table, shard_path)
+
+        manifest = {
+            "stage": stage.name,
+            "output_rows": table.num_rows,
+            "shards": [shard_path.as_posix()],
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
+        # Return freshly written dataset
+        return hfds.Dataset.from_parquet(shard_path.as_posix())
+
+    return output_ds
