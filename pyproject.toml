@@ -5,7 +5,7 @@ description = "FoundationDataFactory is a streaming-first data execution system 
 authors = [{ name = "Victor An", email = "victor.duo.an@gmail.com" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.10,<3.14.0"
 dependencies = [
     "pydantic>=2.9.0",
     "pyyaml>=6.0.0",
@@ -23,7 +23,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
