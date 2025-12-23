@@ -38,85 +38,78 @@ Papers propose filters, dedup methods, scorers, and synthetic captioning — but
 
 ### Pipeline
 
-A pipeline is the full recipe from input(s) to output.
+A pipeline is the full recipe from input(s) to output. Each pipeline consists of one or more stages that process data sequentially.
 
 ### Stage
 
 A stage is the **fault-tolerance + caching + materialization boundary**.
-Stages can be resumed and audited.
+
+- Each stage has its own `input` and `output` configuration
+- Stages can be resumed and audited
+- The first stage's input is the pipeline's overall input
+- The last stage's output is the pipeline's overall output
+- Intermediate stages automatically chain: previous stage's output becomes next stage's input
 
 ### Operator
 
-Operators are atomic, reusable building blocks.
+Operators are atomic, reusable building blocks that operate on columnar data using Daft UDFs for distributed execution.
 Operators can appear **multiple times** in a stage (each instance has a unique `id`).
 
 Each operator has a `kind` (inspired by modern data-recipe frameworks):
 
-| kind | What it does |
-|------|--------------|
-| `score` | Compute signals/scores/labels (adds fields, doesn’t drop rows) |
-| `evaluator` | Audit quality/correctness/consistency (adds eval fields) |
-| `filter` | Drop samples (records drop reason) |
-| `refiner` | Normalize/clean/transform fields (records provenance) |
-| `generator` | Generate new fields or new samples (caption/OCR/synthesis) |
+| kind        | What it does                                                                    |
+|-------------|----------------------------------------------------------------------------------|
+| `score`     | Compute signals/scores/labels (adds fields, doesn't drop rows)                 |
+| `evaluator` | Audit quality/correctness/consistency (adds eval fields)                         |
+| `filter`    | Drop samples (records drop reason in metadata)                                  |
+| `refiner`   | Normalize/clean/transform fields (records provenance)                           |
+| `generator` | Generate new fields or new samples (caption/OCR/synthesis)                       |
+
+### Built-in Operators
+
+- **passthrough-refiner**: No-op operator for testing and pipeline development
+- **textstat-filter**: Filter text based on readability and structure metrics (requires `textstat`)
+
+See `fdf/operators/` for the full list of available operators.
 
 ---
+
+## Installation
+
+```bash
+pip install foundation-data-factory
+```
+
+For optional text processing operators:
+
+```bash
+pip install foundation-data-factory[textstat]  # For textstat-filter operator
+pip install foundation-data-factory[nltk]     # For text processing operators
+```
 
 ## Quick Start (YAML Recipe)
 
 Create `pipeline.yaml`:
 
 ```yaml
-name: "vlm-recipe-v1"
-
-input:
-  type: "mixture"
-  seed: 42
-  unit: "tokens"   # tokens | rows | images | bytes
-  datasets:
-    - name: "refinedweb"
-      source: { type: "huggingface", path: "tiiuae/falcon-refinedweb" }
-      weight: 0.6
-    - name: "laion2b"
-      source: { type: "huggingface", path: "laion/laion2B-en", streaming: true }
-      weight: 0.4
+name: "example_pipeline"
 
 stages:
-  - name: "clean_and_score"
-    materialize:
-      path: "s3://fdf-runs/{{run_id}}/clean_and_score/"
-      mode: "incremental"
+  - name: "process_text"
+    input:
+      source:
+        type: "huggingface"
+        path: "imdb"
+        streaming: false
     operators:
-      - id: "score.text_quality"
-        kind: "score"
-        op: "TextQualityScorer"
+      - id: "passthrough"
+        kind: "refiner"
+        op: "passthrough-refiner"
 
-      - id: "filter.text_quality"
-        kind: "filter"
-        op: "ThresholdFilter"
-        params: { field: "text_quality_score", ge: 0.6 }
-
-  - name: "embed_and_caption"
-    materialize:
-      path: "s3://fdf-runs/{{run_id}}/embed_and_caption/"
-      mode: "incremental"
-    operators:
-      - id: "score.siglip_emb"
-        kind: "score"
-        op: "SigLIPEncoder"
-        resources: { gpus: 0.5 }
-        batch_size: 256
-        write_fields: ["siglip_emb"]
-
-      - id: "gen.caption"
-        kind: "generator"
-        op: "LLaVACaptioner"
-        resources: { gpus: 1 }
-        batch_size: 16
-
-output:
-  type: "parquet"
-  path: "s3://my-data-lake/golden-dataset/"
+    output:
+      source:
+        type: "parquet"
+        path: "./output/stage1"
 ```
 
 Run:
@@ -125,56 +118,119 @@ Run:
 fdf run pipeline.yaml
 ```
 
-## Data Mixture (First-Class)
+### Example with Text Filtering
 
-FDF supports mixtures that appear in real data recipes:
+For a more complete example using text statistics filtering:
 
-- dataset-level mixture: multiple sources with weights + caps
-- quality-based mixture: bucketed sampling based on scores
-- modality mixture: text-only / image-text / video-text ratios
-- curriculum schedule: weights change over training steps
+```yaml
+name: "example_pipeline_with_filter"
 
-Mixture is designed to be streaming-first and avoids expensive global shuffle by default.
+stages:
+  - name: "score_and_filter"
+    input:
+      source:
+        type: "huggingface"
+        path: "imdb"
+        streaming: false
+    operators:
+      - id: "textstat_filter"
+        kind: "filter"
+        op: "textstat-filter"
+        params:
+          column: "text"
+          metrics:
+            - flesch_reading_ease
+            - sentence_count
+            - character_count
+          min_scores:
+            flesch_reading_ease: 0
+            sentence_count: 1.0
+            character_count: 100.0
+          max_scores:
+            flesch_reading_ease: 100
+            sentence_count: 50.0
+            character_count: 5000.0
+    output:
+      source:
+        type: "parquet"
+        path: "./output/filtered"
+```
+
+See `example_pipeline.yaml` and `example_pipeline_with_filter.yaml` for complete examples.
+
+## Architecture
+
+FDF is built on a modern data stack:
+
+- **Hugging Face Datasets**: Primary data abstraction (input/output must be `datasets.Dataset` or `IterableDataset`)
+- **Daft**: Internal data plane for columnar execution, DataFrame semantics, and distributed processing
+- **Ray**: Distributed runtime for execution and scheduling, especially for GPU operators
+- **Apache Arrow**: Columnar interchange format between Hugging Face Datasets, Daft, and operators
+
+### Key Features
+
+- **Streaming-first**: Native support for streaming datasets, avoiding global shuffle by default
+- **Distributed execution**: Uses Daft's distributed UDFs for scalable processing
+- **Unified runtime**: Single runtime handles both local and Ray execution via `daft.set_runner_ray()`
+- **Data sharding**: Automatic sharding using Hugging Face's `datasets.distributed.split_dataset_by_node`
+- **Multiple data formats**: Supports parquet, json, csv, iceberg, lance, and huggingface formats
 
 ## Observability & Reproducibility
 
-Every stage emits a manifest.json with:
+Every stage emits a `manifest.json` with:
 
-- operator versions + parameters
-- input/output counts and accept/reject stats
-- output shard paths
-- run metadata (seed, code version, config hash)
+- stage name and output path
+- output row count
+- operator versions and parameters
 
-FDF also writes standard provenance fields into the dataset:
+Operators can add metadata to each row:
 
-- **fdf**/tags
-- **fdf**/scores
-- **fdf**/dropped_by
-- **fdf**/refined_by
-- **fdf**/generated_by
-- **fdf**/operator_versions
+- **metadata**: JSON field containing operator-specific metrics and provenance
+  - Example: `{"textstat-filter": {"flesch_reading_ease": 73.9, "sentence_count": 4.0}}`
 
 ## Optional Integrations
 
-- **Dagster**: orchestration and asset-based lineage (wrapper package)
-- **LangKit**: Text metrics and filtering operators (install with `pip install langkit[all]`)
+- **textstat**: Text readability and structure metrics for filtering (install with `pip install textstat`)
+  - Used by `textstat-filter` operator for calculating metrics like Flesch reading ease, sentence count, etc.
 - **NLTK**: Text processing operators like stopword removal (install with `pip install nltk`)
 
 Integrations are optional and can be added as needed. Operators that require these dependencies will raise helpful error messages if the dependencies are missing.
 
-## Predefined Pipelines
-
-FDF ships with curated pipeline templates inspired by papers:
-
-- text/refinedweb_like.yaml
-- vlm/laion_dedup_caption.yaml
-- vlm/webdataset_exact_dedup.yaml
-- eval/ocr_coverage_audit.yaml
+To install with optional dependencies:
 
 ```bash
-fdf pipelines list
-fdf pipelines show vlm/laion_dedup_caption
+pip install foundation-data-factory[textstat,nltk]
 ```
+
+## CLI Usage
+
+FDF provides a command-line interface for running pipelines:
+
+```bash
+# Validate a pipeline configuration
+fdf validate pipeline.yaml
+
+# Run a pipeline locally
+fdf run pipeline.yaml
+
+# Run a pipeline on Ray cluster
+fdf run pipeline.yaml --ray-address ray://127.0.0.1:10001
+```
+
+See `fdf/cli/main.py` for all available commands.
+
+## Data Sources
+
+FDF supports multiple data source formats for both input and output:
+
+- **parquet**: Apache Parquet files (supports directory with manifest.json)
+- **json**: JSON Lines format
+- **csv**: Comma-separated values
+- **huggingface**: Hugging Face datasets (local or remote)
+- **iceberg**: Apache Iceberg tables (planned)
+- **lance**: Lance format for vector data
+
+Each stage can read from and write to any supported format. Data is automatically converted between formats as it flows through the pipeline.
 
 ## Contributing
 
@@ -184,6 +240,7 @@ Contributions welcome:
 - new pipeline templates
 - performance improvements
 - tests and benchmarks
+- support for additional data formats
 
 ## Getting started with your project
 
@@ -230,9 +287,9 @@ git push origin main
 You are now ready to start development on your project!
 The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
 
-To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
-For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
-To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
+To finalize the set-up for publishing to PyPI, see the [publishing guide](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
+For activating the automatic documentation with MkDocs, see the [MkDocs guide](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
+To enable the code coverage reports, see the [codecov guide](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
 
 ## Releasing a new version
 
@@ -241,7 +298,7 @@ To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookie
 - Create a [new release](https://github.com/duoan/foundation-data-factory/releases/new) on Github.
 - Create a new tag in the form `*.*.*`.
 
-For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
+For more details, see the [CI/CD guide](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
 
 ---
 
