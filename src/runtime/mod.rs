@@ -84,7 +84,9 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
 
         // Process batches in parallel using Rayon
         // Each batch is processed independently (apply all operators), then results are collected
-        let processed_batches: Vec<Result<(arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>), anyhow::Error>> = batches
+        let processed_batches: Vec<
+            Result<(arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>), anyhow::Error>,
+        > = batches
             .into_par_iter()
             .enumerate()
             .map(|(batch_idx, batch)| {
@@ -97,7 +99,9 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
                     let op_input_rows = batch.num_rows();
                     batch = match operator.apply(batch) {
                         Ok(b) => b,
-                        Err(e) => return Err(e.context(format!("Failed to process batch {}", batch_idx))),
+                        Err(e) => {
+                            return Err(e.context(format!("Failed to process batch {}", batch_idx)))
+                        }
                     };
                     let op_output_rows = batch.num_rows();
 
