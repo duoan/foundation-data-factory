@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from daft.recordbatch.micropartition import MicroPartition
-
-from .base import BatchOperator
+from .base import BatchOperator, BatchView
 from .registry import register_operator
 
 
@@ -20,6 +18,6 @@ class PassthroughRefiner(BatchOperator):
     version = "0.0.1"
     kind = "refiner"
 
-    def apply(self, batch: MicroPartition, params: dict[str, Any] | None = None) -> None:
+    def apply(self, batch: BatchView, params: dict[str, Any] | None = None) -> None:
         """Passthrough: no-op, batch unchanged."""
         pass

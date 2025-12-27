@@ -56,8 +56,12 @@ def _apply_operators_and_write(
             # Initialize operator with parameters
             op_instance = op_cls(**op_params)  # type: ignore[misc]
 
+            # Wrap partition in BatchView to hide Daft details
+            from fdf.operators.base import BatchView
+
+            batch_view = BatchView(partition)
             # Apply operator in-place (modifies partition directly)
-            op_instance.apply(partition)  # type: ignore[arg-type]
+            op_instance.apply(batch_view)  # type: ignore[arg-type]
 
         # Convert to Arrow Table for writing
         partition_table = partition.to_arrow()  # type: ignore[possibly-missing-attribute]

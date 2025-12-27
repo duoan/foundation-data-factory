@@ -6,6 +6,7 @@ import daft
 import pytest
 from daft.recordbatch.micropartition import MicroPartition
 
+from fdf.operators.base import BatchView
 from fdf.operators.textstat_filter import TextstatFilter
 
 
@@ -14,6 +15,12 @@ def sample_micropartition() -> MicroPartition:
     """Create a sample MicroPartition for testing."""
     df = daft.from_pydict({"text": ["Hello world. This is a test.", "Short text."]})
     return next(iter(df.iter_partitions()))
+
+
+@pytest.fixture
+def sample_batch_view(sample_micropartition: MicroPartition) -> BatchView:
+    """Create a BatchView from sample MicroPartition for testing."""
+    return BatchView(sample_micropartition)
 
 
 def test_textstat_filter_import_without_textstat(monkeypatch, sample_micropartition: MicroPartition) -> None:
@@ -28,18 +35,18 @@ def test_textstat_filter_import_without_textstat(monkeypatch, sample_micropartit
     pass
 
 
-def test_textstat_filter_params_deprecated(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_params_deprecated(sample_batch_view: BatchView) -> None:
     """Test that apply() no longer accepts params parameter."""
     op = TextstatFilter()
-    mp = sample_micropartition
+    batch = sample_batch_view
 
     # apply() should work without params
-    op.apply(mp)
-    table = mp.to_arrow()
+    op.apply(batch)
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_basic_usage(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_basic_usage(sample_batch_view: BatchView) -> None:
     """Test basic usage of TextstatFilter."""
     op = TextstatFilter(
         metrics={
@@ -47,101 +54,92 @@ def test_textstat_filter_basic_usage(sample_micropartition: MicroPartition) -> N
             "sentence_count": {"min": 0.0, "max": 10.0},  # Allow 0 sentences
         },
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
     # Verify text_metrics column was added
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_only_uses_specified_metrics(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_only_uses_specified_metrics(sample_batch_view: BatchView) -> None:
     """Test that only user-specified metrics are used, not all default metrics."""
     # Only specify one metric - should only use that one, not all defaults
     op = TextstatFilter(
         metrics={"sentence_count": {}},  # Only this metric, not all defaults
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
     # Verify only sentence_count is in the metrics struct
-    df = daft.from_arrow(table)
     if table.num_rows > 0:
+        df = daft.from_arrow(table)
         row = df.to_pylist()[0]
         text_metrics = row["text_metrics"]
         # Should only have sentence_count, not all default metrics
         assert "sentence_count" in text_metrics or hasattr(text_metrics, "sentence_count")
         # Should not have other default metrics like flesch_reading_ease
         # (Note: this is a structural check - the struct should only contain sentence_count)
-
-    # Verify text_metrics contains expected metrics (if any rows remain after filtering)
-    if table.num_rows > 0:
-        df = daft.from_arrow(table)
-        for row in df.to_pylist():
-            text_metrics = row["text_metrics"]
-            assert text_metrics is not None
-            # text_metrics is a struct, check that it has the expected fields
-            assert "flesch_reading_ease" in text_metrics or hasattr(text_metrics, "flesch_reading_ease")
-            assert "sentence_count" in text_metrics or hasattr(text_metrics, "sentence_count")
+        assert "flesch_reading_ease" not in text_metrics and not hasattr(text_metrics, "flesch_reading_ease")
 
 
-def test_textstat_filter_with_custom_column(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_with_custom_column(sample_batch_view: BatchView) -> None:
     """Test TextstatFilter with custom column name."""
     op = TextstatFilter(
         column="text",
         metrics={"sentence_count": {"min": 0.0, "max": 10.0}},
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_uses_default_thresholds(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_uses_default_thresholds(sample_batch_view: BatchView) -> None:
     """Test that metrics without thresholds use default values."""
     # Only specify metric name without thresholds - should use defaults
     op = TextstatFilter(
         metrics={"sentence_count": {}},  # Empty dict should use defaults
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_partial_thresholds(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_partial_thresholds(sample_batch_view: BatchView) -> None:
     """Test that metrics with partial thresholds merge with defaults."""
     # Only specify min, max should come from defaults
     op = TextstatFilter(
         metrics={"sentence_count": {"min": 2.0}},  # Only min, max from default (89.1)
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_filters_rows(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_filters_rows(sample_batch_view: BatchView) -> None:
     """Test that TextstatFilter actually filters rows based on criteria."""
     op = TextstatFilter(
         metrics={"sentence_count": {"min": 2.0, "max": 10.0}},  # Require at least 2 sentences
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    original_count = mp.to_arrow().num_rows
-    op.apply(mp)
-    filtered_count = mp.to_arrow().num_rows
+    original_count = batch.get_micropartition().to_arrow().num_rows
+    op.apply(batch)
+    filtered_count = batch.get_micropartition().to_arrow().num_rows
 
     # Should filter out rows that don't meet criteria
     # Note: "Hello world. This is a test." has 2 sentences, "Short text." has 1 sentence
@@ -150,25 +148,25 @@ def test_textstat_filter_filters_rows(sample_micropartition: MicroPartition) -> 
     assert filtered_count >= 0  # Should not be negative
 
 
-def test_textstat_filter_default_scores(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_default_scores(sample_batch_view: BatchView) -> None:
     """Test TextstatFilter with default min/max scores."""
     op = TextstatFilter()  # Uses all default metrics
-    mp = sample_micropartition
+    batch = sample_batch_view
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_mismatched_min_max_scores(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_mismatched_min_max_scores(sample_batch_view: BatchView) -> None:
     """Test that missing min or max keys use defaults."""
     # Should work - missing max will use default
     op = TextstatFilter(
         metrics={"flesch_reading_ease": {"min": 0.0}},  # Missing max, will use default
     )
-    mp = sample_micropartition
-    op.apply(mp)  # Should work fine
+    batch = sample_batch_view
+    op.apply(batch)  # Should work fine
 
 
 def test_textstat_filter_invalid_metrics(sample_micropartition: MicroPartition) -> None:
@@ -186,10 +184,11 @@ def test_textstat_filter_missing_column_fallback(sample_micropartition: MicroPar
     # Create MicroPartition without 'text' column
     df = daft.from_pydict({"other_col": ["test"]})
     mp = next(iter(df.iter_partitions()))
+    batch = BatchView(mp)
 
     # Should raise ValueError when column is not found
     with pytest.raises(ValueError, match="Column 'nonexistent' not found"):
-        op.apply(mp)
+        op.apply(batch)
 
 
 def test_textstat_filter_empty_text(sample_micropartition: MicroPartition) -> None:
@@ -199,14 +198,15 @@ def test_textstat_filter_empty_text(sample_micropartition: MicroPartition) -> No
     )
     df = daft.from_pydict({"text": [None, "", "Valid text."]})
     mp = next(iter(df.iter_partitions()))
+    batch = BatchView(mp)
 
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names
 
 
-def test_textstat_filter_accepts_extra_kwargs(sample_micropartition: MicroPartition) -> None:
+def test_textstat_filter_accepts_extra_kwargs(sample_batch_view: BatchView) -> None:
     """Test that TextstatFilter accepts additional unknown parameters via **kwargs."""
     # Should not raise error when passing extra parameters
     op = TextstatFilter(
@@ -214,10 +214,10 @@ def test_textstat_filter_accepts_extra_kwargs(sample_micropartition: MicroPartit
         extra_param="ignored",
         another_param=123,
     )
-    mp = sample_micropartition
+    batch = sample_batch_view
 
     # Should work normally despite extra parameters
-    op.apply(mp)
+    op.apply(batch)
 
-    table = mp.to_arrow()
+    table = batch.get_micropartition().to_arrow()
     assert "text_metrics" in table.column_names

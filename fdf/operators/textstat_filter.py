@@ -3,14 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import daft
-from daft.expressions import ExpressionsProjection, col
-from daft.functions import get
-from daft.recordbatch.micropartition import MicroPartition
 from textstat import textstat
 
 from fdf.operators.registry import register_operator
 
-from .base import BatchOperator
+from .base import BatchOperator, BatchView
 
 # Default metrics configuration (from example code)
 # Only include metrics that have corresponding functions in _default_metric_functions
@@ -192,33 +189,33 @@ class TextstatFilter(BatchOperator):
 
         return text_metrics
 
-    def apply(self, mp: MicroPartition) -> None:
+    def apply(self, batch: BatchView) -> None:
         """Filter data based on textstat metrics in-place.
 
         Args:
-            mp: Daft MicroPartition to modify in-place
+            batch: BatchView to modify in-place
         """
         # Check if column exists
-        column_names = mp.column_names()
-        if self.column not in column_names:
-            msg = f"Column '{self.column}' not found in MicroPartition. Available columns: {column_names}"
+        if not batch.has_column(self.column):
+            available = batch.column_names()
+            msg = f"Column '{self.column}' not found. Available columns: {available}"
             raise ValueError(msg)
 
-        # New column
-        proj = ExpressionsProjection(
-            [col(c) for c in mp.column_names()] + [self.text_metrics_udf(col(self.column)).alias("text_metrics")],
+        # Add text_metrics column using UDF (already decorated in _create_text_metrics_udf)
+        batch.add_column_from_udf(
+            input_column=self.column,
+            udf_func=self.text_metrics_udf,
+            output_column="text_metrics",
+            already_decorated=True,
         )
 
-        # Filters
-        predicate = None
-        for m, thresholds in self.metrics.items():
-            lo = float(thresholds["min"])
-            hi = float(thresholds["max"])
-            metric_col = get(col("text_metrics"), m)
-            cond = metric_col.not_null() & metric_col.between(lo, hi)
-            predicate = cond if predicate is None else (predicate & cond)
+        # Filter rows based on metrics thresholds
+        # Build list of conditions for filter_rows_by_multiple_conditions
+        conditions = []
+        for metric_name, thresholds in self.metrics.items():
+            min_val = float(thresholds["min"])
+            max_val = float(thresholds["max"])
+            conditions.append(("text_metrics", metric_name, min_val, max_val))
 
-        out = mp.eval_expression_list(proj).filter(ExpressionsProjection([predicate]))
-
-        # Update the MicroPartition in-place by replacing its internal micropartition
-        mp._micropartition = out._micropartition
+        # Apply filtering (all conditions must be met)
+        batch.filter_rows_by_multiple_conditions(conditions, require_all=True)
