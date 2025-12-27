@@ -4,10 +4,8 @@ use rayon::prelude::*;
 use std::path::Path;
 
 // Type alias for processed batch result
-type ProcessedBatchResult = Result<
-    (arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>),
-    anyhow::Error,
->;
+type ProcessedBatchResult =
+    Result<(arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>), anyhow::Error>;
 
 use crate::config::PipelineConfig;
 use crate::io;
