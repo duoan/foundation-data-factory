@@ -3,6 +3,12 @@ use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::path::Path;
 
+// Type alias for processed batch result
+type ProcessedBatchResult = Result<
+    (arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>),
+    anyhow::Error,
+>;
+
 use crate::config::PipelineConfig;
 use crate::io;
 use crate::operators;
@@ -84,9 +90,7 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
 
         // Process batches in parallel using Rayon
         // Each batch is processed independently (apply all operators), then results are collected
-        let processed_batches: Vec<
-            Result<(arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>), anyhow::Error>,
-        > = batches
+        let processed_batches: Vec<ProcessedBatchResult> = batches
             .into_par_iter()
             .enumerate()
             .map(|(batch_idx, batch)| {
