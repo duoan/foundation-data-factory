@@ -19,12 +19,6 @@ repos:
     hooks:
       - id: fmt
         args: [--all, --]
-        env:
-          PATH: "${HOME}/.cargo/bin:${PATH}"
       - id: clippy
         args: [--all-targets, --all-features, --, -D, warnings]
-        env:
-          PATH: "${HOME}/.cargo/bin:${PATH}"
       - id: cargo-check
-        env:
-          PATH: "${HOME}/.cargo/bin:${PATH}"
