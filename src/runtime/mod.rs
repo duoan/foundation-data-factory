@@ -1,7 +1,5 @@
 use anyhow::{Context, Result};
-use arrow::record_batch::RecordBatch;
 use indicatif::{ProgressBar, ProgressStyle};
-use rayon::prelude::*;
 use std::path::Path;
 
 use crate::config::PipelineConfig;
@@ -41,6 +39,22 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
         println!("  Reading input from: {:?}", input_source.path);
         let batches_iter = io::read_data_source(input_source)?;
 
+        // Collect batches to get count for progress bar (we need to know total count)
+        // Note: For very large datasets, we might want to estimate or use a different approach
+        let batches: Vec<_> = batches_iter.collect::<Result<Vec<_>>>()?;
+        let total_batches = batches.len();
+        println!("  Read {} batches", total_batches);
+
+        // Create progress bar
+        let pb = ProgressBar::new(total_batches as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} batches ({percent}%)",
+                )
+                .unwrap(),
+        );
+
         // Create operators once
         let mut operator_instances = Vec::new();
         let mut operator_manifests = Vec::new();
@@ -79,8 +93,8 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
         );
         std::fs::create_dir_all(path)?;
 
-        for batch_result in batches_iter {
-            let mut batch = batch_result?;
+        for batch in batches {
+            let mut batch = batch;
             total_input_rows += batch.num_rows();
 
             // Apply all operators sequentially to this batch
@@ -128,7 +142,12 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
                 current_partition.push(batch);
                 current_partition_rows += batch_rows;
             }
+
+            // Update progress bar
+            pb.inc(1);
         }
+
+        pb.finish_with_message("All batches processed");
 
         // Write remaining partition
         if !current_partition.is_empty() {

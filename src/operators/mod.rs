@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub mod textstat;
 
 pub trait Operator: Send + Sync {
+    #[allow(dead_code)] // May be used for logging/debugging in the future
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn apply(&self, batch: RecordBatch) -> Result<RecordBatch>;
@@ -80,10 +81,10 @@ impl TextStatFilter {
                 .context("metric thresholds must be a mapping")?;
 
             let min = thresholds
-                .get(&serde_yaml::Value::String("min".to_string()))
+                .get(serde_yaml::Value::String("min".to_string()))
                 .and_then(|v: &serde_yaml::Value| v.as_f64());
             let max = thresholds
-                .get(&serde_yaml::Value::String("max".to_string()))
+                .get(serde_yaml::Value::String("max".to_string()))
                 .and_then(|v: &serde_yaml::Value| v.as_f64());
 
             metrics.insert(metric_name, MetricThresholds { min, max });
@@ -136,8 +137,8 @@ impl Operator for TextStatFilter {
             let cond = BooleanArray::from_iter(float_array.iter().map(|v| -> Option<bool> {
                 match v {
                     Some(val) => {
-                        let min_ok = thresholds.min.map_or(true, |min| val >= min);
-                        let max_ok = thresholds.max.map_or(true, |max| val <= max);
+                        let min_ok = thresholds.min.is_none_or(|min| val >= min);
+                        let max_ok = thresholds.max.is_none_or(|max| val <= max);
                         Some(min_ok && max_ok)
                     }
                     None => Some(true), // Null values pass the filter (skip this condition)

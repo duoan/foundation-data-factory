@@ -93,7 +93,7 @@ impl OperatorConfig {
             OperatorConfig::Simple(name) => name.clone(),
             OperatorConfig::WithParams { params } => {
                 // Find the operator name (the key that's not a standard field)
-                for (key, _) in params {
+                for key in params.keys() {
                     if !matches!(key.as_str(), "id" | "kind" | "op" | "params") {
                         return key.clone();
                     }

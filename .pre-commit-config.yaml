@@ -14,9 +14,17 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: "v0.14.8"
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: "v1.0"
     hooks:
-      - id: ruff-check
-        args: [ --exit-non-zero-on-fix ]
-      - id: ruff-format
+      - id: fmt
+        args: [--all, --]
+        env:
+          PATH: "${HOME}/.cargo/bin:${PATH}"
+      - id: clippy
+        args: [--all-targets, --all-features, --, -D, warnings]
+        env:
+          PATH: "${HOME}/.cargo/bin:${PATH}"
+      - id: cargo-check
+        env:
+          PATH: "${HOME}/.cargo/bin:${PATH}"
