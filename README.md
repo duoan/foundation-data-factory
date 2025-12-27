@@ -164,6 +164,7 @@ FDF is built on a modern Rust data stack:
 
 - **Apache Arrow**: Columnar in-memory format for efficient data processing
 - **Apache Parquet**: Columnar storage format for persistent data
+- **Rayon**: Data parallelism for parallel batch processing
 - **Direct Arrow/Parquet manipulation**: No high-level DataFrame overhead, maximum performance
 
 ### Key Features
@@ -180,6 +181,7 @@ The Rust implementation provides significant performance improvements over Pytho
 
 - **10-100x faster** processing (depending on data size and operations)
 - **Lower memory footprint** with zero-cost abstractions
+- **Parallel batch processing** with Rayon's work-stealing scheduler
 - **No Python overhead** - direct Arrow/Parquet manipulation
 
 ---

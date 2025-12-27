@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use std::path::Path;
 
 use crate::config::PipelineConfig;
@@ -70,18 +71,6 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
 
         println!("  Applying {} operators...", stage.operators.len());
 
-        // Process batches one by one (streaming)
-        let mut total_input_rows = 0;
-        let mut total_output_rows = 0;
-        let mut operator_stats: Vec<(usize, usize)> = vec![(0, 0); operator_instances.len()];
-
-        // Setup for writing partitions
-        let partition_size = 10_000; // Rows per partition file
-        let mut partition_files = Vec::new();
-        let mut current_partition = Vec::new();
-        let mut current_partition_rows = 0;
-        let mut partition_idx = 0;
-
         // Create output directory
         let path = Path::new(
             stage
@@ -93,23 +82,66 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
         );
         std::fs::create_dir_all(path)?;
 
-        for batch in batches {
-            let mut batch = batch;
-            total_input_rows += batch.num_rows();
+        // Process batches in parallel using Rayon
+        // Each batch is processed independently (apply all operators), then results are collected
+        let processed_batches: Vec<Result<(arrow::record_batch::RecordBatch, usize, Vec<(usize, usize)>), anyhow::Error>> = batches
+            .into_par_iter()
+            .enumerate()
+            .map(|(batch_idx, batch)| {
+                let mut batch = batch;
+                let initial_input_rows = batch.num_rows();
+                let mut batch_operator_stats = vec![(0, 0); operator_instances.len()];
 
-            // Apply all operators sequentially to this batch
-            for (op_idx, operator) in operator_instances.iter().enumerate() {
-                let input_rows = batch.num_rows();
-                batch = operator.apply(batch)?;
-                let output_rows = batch.num_rows();
+                // Apply all operators sequentially to this batch
+                for (op_idx, operator) in operator_instances.iter().enumerate() {
+                    let op_input_rows = batch.num_rows();
+                    batch = match operator.apply(batch) {
+                        Ok(b) => b,
+                        Err(e) => return Err(e.context(format!("Failed to process batch {}", batch_idx))),
+                    };
+                    let op_output_rows = batch.num_rows();
 
-                // Update operator stats
-                operator_stats[op_idx].0 += input_rows;
-                operator_stats[op_idx].1 += output_rows;
-            }
+                    // Update operator stats for this batch
+                    batch_operator_stats[op_idx] = (op_input_rows, op_output_rows);
+                }
 
+                // Update progress bar (thread-safe)
+                pb.inc(1);
+
+                Ok((batch, initial_input_rows, batch_operator_stats))
+            })
+            .collect();
+
+        // Collect results and aggregate statistics
+        let mut processed_batches_vec = Vec::new();
+        let mut total_input_rows = 0;
+        let mut total_output_rows = 0;
+        let mut operator_stats: Vec<(usize, usize)> = vec![(0, 0); operator_instances.len()];
+
+        for result in processed_batches {
+            let (batch, initial_input_rows, batch_stats) = result?;
+            total_input_rows += initial_input_rows;
             total_output_rows += batch.num_rows();
 
+            // Aggregate operator stats
+            for (op_idx, (op_input, op_output)) in batch_stats.iter().enumerate() {
+                operator_stats[op_idx].0 += op_input;
+                operator_stats[op_idx].1 += op_output;
+            }
+
+            processed_batches_vec.push(batch);
+        }
+
+        pb.finish_with_message("All batches processed");
+
+        // Write partitions (sequential to maintain order)
+        let partition_size = 10_000; // Rows per partition file
+        let mut partition_files = Vec::new();
+        let mut current_partition = Vec::new();
+        let mut current_partition_rows = 0;
+        let mut partition_idx = 0;
+
+        for batch in processed_batches_vec {
             // Add batch to current partition
             if batch.num_rows() > partition_size {
                 // Split large batch
@@ -142,12 +174,7 @@ pub fn run_pipeline(config: &PipelineConfig) -> Result<()> {
                 current_partition.push(batch);
                 current_partition_rows += batch_rows;
             }
-
-            // Update progress bar
-            pb.inc(1);
         }
-
-        pb.finish_with_message("All batches processed");
 
         // Write remaining partition
         if !current_partition.is_empty() {
