@@ -6,12 +6,10 @@ stages:
     input:
       source:
         type: "huggingface"
-        path: "imdb"  # IMDb movie reviews dataset from Hugging Face
-        streaming: false  # Load full dataset
+        path: "imdb" # IMDb movie reviews dataset from Hugging Face
+        streaming: false # Load full dataset
     operators:
-      - id: "passthrough_1"
-        kind: "refiner"
-        op: "passthrough-refiner"
+      - "passthrough-refiner"
     output:
       source:
         type: "parquet"
@@ -21,9 +19,7 @@ stages:
   # Note: input is auto-configured from previous stage's output
   - name: "process_again"
     operators:
-      - id: "passthrough_2"
-        kind: "refiner"
-        op: "passthrough-refiner"
+      - "passthrough-refiner"
     output:
       source:
         type: "parquet"

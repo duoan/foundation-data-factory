@@ -6,14 +6,12 @@ stages:
     input:
       source:
         type: "huggingface"
-        path: "imdb"
+        path: "/Users/duoan/Downloads/unsupervised-00000-of-00001.parquet"
         streaming: false
     operators:
-      # Filter based on metrics
-      - id: "textstat_filter"
-        kind: "filter"
-        op: "textstat-filter"
-        params:
+      # Annotate with textstat metrics, then filter
+      - "textstat-annotator"
+      - "textstat-filter":
           column: "text"
           metrics:
             flesch_reading_ease:
