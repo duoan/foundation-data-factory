@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -28,12 +29,19 @@ def _apply_operators_and_write(
     output_path = Path(stage.output.source.path)  # type: ignore[arg-type]
     output_path.mkdir(parents=True, exist_ok=True)
 
+    input_rows = 0
     total_rows = 0
     partition_index = 0
+    output_schema = None
+    partitions = []
 
     # Iterate partitions - Daft handles distributed execution
     # Each partition is materialized on its worker, not on driver
     for partition in df.iter_partitions():
+        # Count input rows before applying operators
+        input_table = partition.to_arrow()  # type: ignore[possibly-missing-attribute]
+        input_rows += input_table.num_rows
+
         # Apply each operator in-place to this partition (MicroPartition)
         for op_cfg in stage.operators:
             op_name = getattr(op_cfg, "op", None)
@@ -41,32 +49,65 @@ def _apply_operators_and_write(
                 continue
 
             op_cls = get_operator_class(op_name)
-            op_instance = op_cls()
 
             # Get operator parameters from config
             op_params = getattr(op_cfg, "params", None) or {}
 
+            # Initialize operator with parameters
+            op_instance = op_cls(**op_params)  # type: ignore[misc]
+
             # Apply operator in-place (modifies partition directly)
-            op_instance.apply(partition, params=op_params)  # type: ignore[arg-type]
+            op_instance.apply(partition)  # type: ignore[arg-type]
 
         # Convert to Arrow Table for writing
         partition_table = partition.to_arrow()  # type: ignore[possibly-missing-attribute]
-        total_rows += partition_table.num_rows
+        partition_rows = partition_table.num_rows
+        total_rows += partition_rows
+
+        # Save schema from last partition (all partitions should have same schema)
+        output_schema = partition_table.schema
 
         # Write partition directly to disk - no collection to driver
         # Use PyArrow to write individual partition
         partition_file = output_path / f"part-{partition_index:05d}.parquet"
         pq.write_table(partition_table, partition_file)
+
+        # Calculate MD5 hash of the file for integrity checking (not security)
+        md5_hash = hashlib.md5()  # noqa: S324
+        with partition_file.open("rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                md5_hash.update(chunk)
+        file_md5 = md5_hash.hexdigest()
+
+        # Record partition information with relative path (relative to output_path) and MD5
+        partition_info = {
+            "file": partition_file.name,
+            "rows": partition_rows,
+            "md5": file_md5,
+        }
+        partitions.append(partition_info)
+
         partition_index += 1
 
     # Write manifest if output is parquet
     if stage.output.source.type == "parquet":
         manifest_path = output_path / "manifest.json"
 
+        # Convert Arrow schema to JSON-serializable format
+        schema_dict = None
+        if output_schema is not None:
+            schema_dict = {
+                "names": output_schema.names,
+                "types": [str(field.type) for field in output_schema],
+            }
+
         manifest = {
             "stage": stage.name,
+            "input_rows": input_rows,
             "output_rows": total_rows,
-            "path": str(output_path),
+            "schema": schema_dict,
+            "path": str(output_path.resolve()),
+            "partitions": partitions,
         }
         manifest_path.write_text(json.dumps(manifest, indent=2))
 

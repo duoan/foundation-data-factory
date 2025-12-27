@@ -37,7 +37,7 @@ class BatchOperator(ABC):
     paper: str | None = None
 
     @abstractmethod
-    def apply(self, batch: MicroPartition, params: dict[str, Any] | None = None) -> None:
+    def apply(self, part: MicroPartition, params: dict[str, Any] | None = None) -> None:
         """Apply the operator to a batch in-place.
 
         Args:
