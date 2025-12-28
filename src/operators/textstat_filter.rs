@@ -91,20 +91,19 @@ impl_operator! {
     kind: "filter",
     apply: |self, batch| {
         use crate::operators::row::batch_to_rows;
-
+        use rayon::prelude::*;
+        
         // Convert batch to rows
         let rows = batch_to_rows(&batch)?;
-
-        // Build filter mask by checking each row
-        let mut keep_mask = Vec::with_capacity(rows.len());
-
-        for row in &rows {
-            let should_keep = <Self as FilterBase>::should_keep(self, row)?;
-            keep_mask.push(should_keep);
-        }
+        
+        // Build filter mask by checking each row in parallel
+        let keep_mask: Result<Vec<bool>> = rows
+            .par_iter()
+            .map(|row| <Self as FilterBase>::should_keep(self, row))
+            .collect();
 
         // Convert to BooleanArray and apply filter
-        let boolean_array = BooleanArray::from(keep_mask);
+        let boolean_array = BooleanArray::from(keep_mask?);
         Ok(filter_record_batch(&batch, &boolean_array)?)
     }
 }

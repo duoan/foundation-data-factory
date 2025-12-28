@@ -56,8 +56,7 @@ impl Row {
 
     /// Check if a column exists and is not null
     pub fn has(&self, column: &str) -> bool {
-        self.values.contains_key(column)
-            && !matches!(self.values.get(column), Some(Value::Null))
+        self.values.contains_key(column) && !matches!(self.values.get(column), Some(Value::Null))
     }
 }
 
@@ -127,29 +126,41 @@ pub fn rows_to_batch(rows: &[Row], original_schema: &Schema) -> Result<RecordBat
 }
 
 /// Extract a value from an Arrow array at a specific row index
-fn extract_value(array: &Arc<dyn arrow::array::Array>, row_idx: usize, data_type: &DataType) -> Result<Value> {
+fn extract_value(
+    array: &Arc<dyn arrow::array::Array>,
+    row_idx: usize,
+    data_type: &DataType,
+) -> Result<Value> {
     if !array.is_valid(row_idx) {
         return Ok(Value::Null);
     }
 
     match data_type {
         DataType::Utf8 | DataType::LargeUtf8 => {
-            let string_array = array.as_any().downcast_ref::<StringArray>()
+            let string_array = array
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .ok_or_else(|| anyhow::anyhow!("Expected StringArray"))?;
             Ok(Value::String(string_array.value(row_idx).to_string()))
         }
         DataType::Float64 => {
-            let float_array = array.as_any().downcast_ref::<Float64Array>()
+            let float_array = array
+                .as_any()
+                .downcast_ref::<Float64Array>()
                 .ok_or_else(|| anyhow::anyhow!("Expected Float64Array"))?;
             Ok(Value::Float64(float_array.value(row_idx)))
         }
         DataType::Int64 => {
-            let int_array = array.as_any().downcast_ref::<Int64Array>()
+            let int_array = array
+                .as_any()
+                .downcast_ref::<Int64Array>()
                 .ok_or_else(|| anyhow::anyhow!("Expected Int64Array"))?;
             Ok(Value::Int64(int_array.value(row_idx)))
         }
         DataType::Boolean => {
-            let bool_array = array.as_any().downcast_ref::<BooleanArray>()
+            let bool_array = array
+                .as_any()
+                .downcast_ref::<BooleanArray>()
                 .ok_or_else(|| anyhow::anyhow!("Expected BooleanArray"))?;
             Ok(Value::Bool(bool_array.value(row_idx)))
         }
@@ -161,32 +172,30 @@ fn extract_value(array: &Arc<dyn arrow::array::Array>, row_idx: usize, data_type
 }
 
 /// Build an Arrow array from rows for a specific column
-fn build_array(rows: &[Row], field_name: &str, data_type: &DataType) -> Result<Arc<dyn arrow::array::Array>> {
+fn build_array(
+    rows: &[Row],
+    field_name: &str,
+    data_type: &DataType,
+) -> Result<Arc<dyn arrow::array::Array>> {
     match data_type {
         DataType::Utf8 | DataType::LargeUtf8 => {
-            let values: Vec<Option<String>> = rows.iter()
-                .map(|row| {
-                    row.get_string(field_name).map(|s| s.to_string())
-                })
+            let values: Vec<Option<String>> = rows
+                .iter()
+                .map(|row| row.get_string(field_name).map(|s| s.to_string()))
                 .collect();
             Ok(Arc::new(StringArray::from_iter(values)))
         }
         DataType::Float64 => {
-            let values: Vec<Option<f64>> = rows.iter()
-                .map(|row| row.get_f64(field_name))
-                .collect();
+            let values: Vec<Option<f64>> = rows.iter().map(|row| row.get_f64(field_name)).collect();
             Ok(Arc::new(Float64Array::from_iter(values)))
         }
         DataType::Int64 => {
-            let values: Vec<Option<i64>> = rows.iter()
-                .map(|row| row.get_i64(field_name))
-                .collect();
+            let values: Vec<Option<i64>> = rows.iter().map(|row| row.get_i64(field_name)).collect();
             Ok(Arc::new(Int64Array::from_iter(values)))
         }
         DataType::Boolean => {
-            let values: Vec<Option<bool>> = rows.iter()
-                .map(|row| row.get_bool(field_name))
-                .collect();
+            let values: Vec<Option<bool>> =
+                rows.iter().map(|row| row.get_bool(field_name)).collect();
             Ok(Arc::new(BooleanArray::from_iter(values)))
         }
         _ => {

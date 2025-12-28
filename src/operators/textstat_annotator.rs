@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::collections::HashMap;
 
-use crate::operators::{AnnotatorBase, Operator, Row, Value};
+use crate::operators::{AnnotatorBase, Row, Value};
 
 pub struct TextStatAnnotator {
     column: String,
@@ -80,18 +80,18 @@ impl_operator! {
     kind: "annotator",
     apply: |self, batch| {
         use crate::operators::row::{batch_to_rows, rows_to_batch};
+        use rayon::prelude::*;
 
         // Convert batch to rows
-        let mut rows = batch_to_rows(&batch)?;
+        let rows = batch_to_rows(&batch)?;
 
-        // Annotate each row
-        for row in &mut rows {
-            *row = <Self as AnnotatorBase>::annotate(self, row)?;
-        }
+        // Annotate rows in parallel using Rayon
+        let annotated_rows: Result<Vec<_>> = rows
+            .into_par_iter()
+            .map(|row| <Self as AnnotatorBase>::annotate(self, &row))
+            .collect();
 
         // Convert back to batch (need to update schema with new annotation columns)
-        // For now, we'll use a simplified approach - in production, you'd want to
-        // properly update the schema
-        rows_to_batch(&rows, &batch.schema())
+        rows_to_batch(&annotated_rows?, &batch.schema())
     }
 }
