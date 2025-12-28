@@ -3,7 +3,7 @@ use arrow::array::*;
 use arrow::compute::filter_record_batch;
 use std::collections::HashMap;
 
-use crate::operators::FilterBase;
+use crate::operators::{FilterBase, Operator, Row};
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -56,35 +56,13 @@ impl TextStatFilter {
 }
 
 impl FilterBase for TextStatFilter {
-    fn should_keep(
-        &self,
-        batch: &arrow::record_batch::RecordBatch,
-        row_idx: usize,
-    ) -> Result<bool> {
+    fn should_keep(&self, row: &Row) -> Result<bool> {
         // Check all metrics - row is kept only if all conditions are satisfied
         for (metric_name, thresholds) in &self.metrics {
             let annotation_col = format!("{}{}", self.annotation_prefix, metric_name);
 
-            // Find column index
-            let col_idx = batch
-                .schema()
-                .fields()
-                .iter()
-                .position(|f| f.name().as_str() == annotation_col.as_str())
-                .context(format!("Column {} not found", annotation_col))?;
-
-            let col = batch.column(col_idx);
-            let float_array = col
-                .as_any()
-                .downcast_ref::<Float64Array>()
-                .context("Column is not Float64")?;
-
-            // Get value for this row (returns None if null)
-            let value = if float_array.is_valid(row_idx) {
-                Some(float_array.value(row_idx))
-            } else {
-                None
-            };
+            // Get value for this metric
+            let value = row.get_f64(&annotation_col);
 
             // Check thresholds
             // If value is None/null, we skip this condition (treat as passing)
@@ -112,12 +90,16 @@ impl_operator! {
     name: "textstat-filter",
     kind: "filter",
     apply: |self, batch| {
-        // Build filter mask by checking each row
-        let num_rows = batch.num_rows();
-        let mut keep_mask = Vec::with_capacity(num_rows);
+        use crate::operators::row::batch_to_rows;
 
-        for row_idx in 0..num_rows {
-            let should_keep = <Self as FilterBase>::should_keep(self, &batch, row_idx)?;
+        // Convert batch to rows
+        let rows = batch_to_rows(&batch)?;
+
+        // Build filter mask by checking each row
+        let mut keep_mask = Vec::with_capacity(rows.len());
+
+        for row in &rows {
+            let should_keep = <Self as FilterBase>::should_keep(self, row)?;
             keep_mask.push(should_keep);
         }
 

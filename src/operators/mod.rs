@@ -4,9 +4,12 @@ use std::collections::HashMap;
 
 #[macro_use]
 mod macros;
+mod row;
 
 pub mod textstat_annotator;
 pub mod textstat_filter;
+
+pub use row::{Row, Value};
 
 pub trait Operator: Send + Sync {
     #[allow(dead_code)] // May be used for logging/debugging in the future
@@ -16,17 +19,19 @@ pub trait Operator: Send + Sync {
 }
 
 /// Base trait for annotators - operators that add annotation fields without dropping rows
+/// Annotators work on individual rows, not Arrow RecordBatches
 pub trait AnnotatorBase: Send + Sync {
-    /// Add annotation columns to a batch
-    /// This should not drop any rows, only add new columns
-    fn add_annotations(&self, batch: RecordBatch) -> Result<RecordBatch>;
+    /// Add annotation fields to a single row
+    /// Returns a new row with additional annotation fields
+    fn annotate(&self, row: &Row) -> Result<Row>;
 }
 
 /// Base trait for filters - operators that filter rows based on conditions
+/// Filters work on individual rows, not Arrow RecordBatches
 pub trait FilterBase: Send + Sync {
-    /// Determine if a row should be kept based on the given row index and batch
+    /// Determine if a row should be kept
     /// Returns true if the row should be kept, false if it should be filtered out
-    fn should_keep(&self, batch: &RecordBatch, row_idx: usize) -> Result<bool>;
+    fn should_keep(&self, row: &Row) -> Result<bool>;
 }
 
 pub fn create_operator(
