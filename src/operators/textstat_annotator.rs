@@ -1,11 +1,11 @@
 use anyhow::Result;
-use arrow::array::*;
-use arrow::datatypes::*;
+use arrow::array::{Float64Array, StringArray};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::operators::{AnnotatorBase, Row, Value};
+use crate::operators::{AnnotatorBase, Operator};
 
 pub struct TextStatAnnotator {
     column: String,
@@ -24,66 +24,8 @@ impl TextStatAnnotator {
 }
 
 impl AnnotatorBase for TextStatAnnotator {
-    fn annotate(&self, row: &Row) -> Result<Row> {
-        // Get the text value
-        let text = row.get_string(&self.column).ok_or_else(|| {
-            anyhow::anyhow!("Column {} not found or is not a string", self.column)
-        })?;
-
-        // Create a new row with all original values plus annotations
-        let mut new_values = row.values.clone();
-
-        // Calculate metrics
-        let prefix = "__annotation_textstat_";
-
-        // Character count
-        new_values.insert(
-            format!("{}character_count", prefix),
-            Value::Float64(text.chars().count() as f64),
-        );
-
-        // Letter count
-        new_values.insert(
-            format!("{}letter_count", prefix),
-            Value::Float64(text.chars().filter(|c| c.is_alphabetic()).count() as f64),
-        );
-
-        // Lexicon count (word count)
-        new_values.insert(
-            format!("{}lexicon_count", prefix),
-            Value::Float64(text.split_whitespace().count() as f64),
-        );
-
-        // Sentence count
-        new_values.insert(
-            format!("{}sentence_count", prefix),
-            Value::Float64(text.matches('.').count().max(1) as f64),
-        );
-
-        // Placeholder for other metrics (set to Null so filters skip them)
-        let placeholder_metrics = vec![
-            "flesch_reading_ease",
-            "automated_readability_index",
-            "syllable_count",
-            "polysyllable_count",
-            "monosyllable_count",
-            "difficult_words",
-        ];
-
-        for metric_name in placeholder_metrics {
-            new_values.insert(format!("{}{}", prefix, metric_name), Value::Null);
-        }
-
-        Ok(Row { values: new_values })
-    }
-}
-
-impl_operator! {
-    TextStatAnnotator,
-    name: "textstat-annotator",
-    kind: "annotator",
-    apply: |self, batch| {
-        // Optimized: directly work on Arrow arrays to avoid memory copies
+    fn add_annotations(&self, batch: &RecordBatch) -> Result<RecordBatch> {
+        // Columnar implementation: directly work on Arrow arrays
         use rayon::prelude::*;
 
         // Find the text column
@@ -103,13 +45,13 @@ impl_operator! {
         let num_rows = batch.num_rows();
         let prefix = "__annotation_textstat_";
 
-        // Calculate metrics in parallel directly on Arrow arrays
         // Convert to Vec first for parallel processing
         let strings: Vec<Option<String>> = string_array
             .iter()
             .map(|opt_str| opt_str.map(|s| s.to_string()))
             .collect();
 
+        // Calculate metrics in parallel directly on Vec<Option<String>>
         let character_count: Vec<Option<f64>> = strings
             .par_iter()
             .map(|opt_str| opt_str.as_ref().map(|s| s.chars().count() as f64))
@@ -167,5 +109,15 @@ impl_operator! {
         let new_schema = Schema::new(new_fields);
         RecordBatch::try_new(Arc::new(new_schema), new_columns)
             .map_err(|e| anyhow::anyhow!("Failed to create RecordBatch: {}", e))
+    }
+}
+
+impl_operator! {
+    TextStatAnnotator,
+    name: "textstat-annotator",
+    kind: "annotator",
+    apply: |self, batch| {
+        // Use columnar implementation from AnnotatorBase
+        <Self as AnnotatorBase>::add_annotations(self, &batch)
     }
 }

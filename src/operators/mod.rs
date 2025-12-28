@@ -19,30 +19,12 @@ pub trait Operator: Send + Sync {
 }
 
 /// Base trait for annotators - operators that add annotation fields without dropping rows
-/// Annotators work on individual rows, not Arrow RecordBatches
+/// Annotators work directly on Arrow arrays (columnar), not row-by-row
 pub trait AnnotatorBase: Send + Sync {
-    /// Add annotation fields to a single row
-    /// Returns a new row with additional annotation fields
-    fn annotate(&self, row: &Row) -> Result<Row>;
-
-    /// Default implementation: apply annotations to a batch
-    /// This converts batch to rows, annotates each row, and converts back
-    fn apply_annotations(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        use crate::operators::row::{batch_to_rows, rows_to_batch};
-        use rayon::prelude::*;
-
-        // Convert batch to rows
-        let rows = batch_to_rows(&batch)?;
-
-        // Annotate rows in parallel using Rayon
-        let annotated_rows: Result<Vec<_>> = rows
-            .into_par_iter()
-            .map(|row| self.annotate(&row))
-            .collect();
-
-        // Convert back to batch (schema will be updated with new annotation columns)
-        rows_to_batch(&annotated_rows?, &batch.schema())
-    }
+    /// Add annotation fields to a batch
+    /// Returns a new RecordBatch with additional annotation columns
+    /// This works directly on Arrow arrays (columnar) for efficiency
+    fn add_annotations(&self, batch: &RecordBatch) -> Result<RecordBatch>;
 }
 
 /// Base trait for filters - operators that filter rows based on conditions

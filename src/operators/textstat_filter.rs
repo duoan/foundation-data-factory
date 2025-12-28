@@ -114,7 +114,7 @@ impl_operator! {
     apply: |self, batch| {
         // Build filter mask directly on Arrow arrays (columnar)
         let mask = <Self as FilterBase>::build_filter_mask(self, &batch)?;
-        
+
         // Apply filter
         Ok(filter_record_batch(&batch, &mask)?)
     }
