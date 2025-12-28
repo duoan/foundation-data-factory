@@ -2,7 +2,6 @@ use anyhow::Result;
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
-pub mod textstat;
 pub mod textstat_annotator;
 pub mod textstat_filter;
 
