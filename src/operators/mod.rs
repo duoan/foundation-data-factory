@@ -2,6 +2,9 @@ use anyhow::Result;
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
+#[macro_use]
+mod macros;
+
 pub mod textstat_annotator;
 pub mod textstat_filter;
 

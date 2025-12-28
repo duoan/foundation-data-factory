@@ -56,16 +56,11 @@ impl TextStatFilter {
     }
 }
 
-impl Operator for TextStatFilter {
-    fn name(&self) -> &str {
-        "textstat-filter"
-    }
-
-    fn kind(&self) -> &str {
-        "filter"
-    }
-
-    fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+impl_operator! {
+    TextStatFilter,
+    name: "textstat-filter",
+    kind: "filter",
+    apply: |self, batch| {
         // Build filter mask
         let mut mask: Option<BooleanArray> = None;
 

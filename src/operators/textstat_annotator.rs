@@ -94,16 +94,11 @@ impl TextStatAnnotator {
     }
 }
 
-impl Operator for TextStatAnnotator {
-    fn name(&self) -> &str {
-        "textstat-annotator"
-    }
-
-    fn kind(&self) -> &str {
-        "annotator"
-    }
-
-    fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+impl_operator! {
+    TextStatAnnotator,
+    name: "textstat-annotator",
+    kind: "annotator",
+    apply: |self, batch| {
         add_textstat_annotations(batch, &self.column)
     }
 }
