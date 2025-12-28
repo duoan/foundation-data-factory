@@ -67,6 +67,7 @@ pub fn extract_row_at_index(batch: &RecordBatch, row_idx: usize) -> Result<Row> 
     let schema = batch.schema();
     let mut values = HashMap::new();
 
+
     for col_idx in 0..num_cols {
         let field = schema.field(col_idx);
         let column = batch.column(col_idx);

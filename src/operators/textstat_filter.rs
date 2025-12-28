@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
+use arrow::array::*;
+use arrow::compute::filter_record_batch;
+use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
-use crate::operators::{FilterBase, Row};
+use crate::operators::FilterBase;
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -54,32 +57,53 @@ impl TextStatFilter {
 }
 
 impl FilterBase for TextStatFilter {
-    fn should_keep(&self, row: &Row) -> Result<bool> {
-        // Check all metrics - row is kept only if all conditions are satisfied
+    fn build_filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray> {
+        let num_rows = batch.num_rows();
+        let schema = batch.schema();
+
+        // Start with all rows kept (all true)
+        let mut mask: Option<BooleanArray> = None;
+
+        // Check each metric condition
         for (metric_name, thresholds) in &self.metrics {
             let annotation_col = format!("{}{}", self.annotation_prefix, metric_name);
 
-            // Get value for this metric
-            let value = row.get_f64(&annotation_col);
+            // Find column index
+            let col_idx = schema
+                .fields()
+                .iter()
+                .position(|f| f.name().as_str() == annotation_col.as_str())
+                .context(format!("Column {} not found", annotation_col))?;
 
-            // Check thresholds
-            // If value is None/null, we skip this condition (treat as passing)
-            if let Some(val) = value {
-                if let Some(min) = thresholds.min {
-                    if val < min {
-                        return Ok(false);
+            let col = batch.column(col_idx);
+            let float_array = col
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .context("Column is not Float64")?;
+
+            // Build condition for this metric (columnar operation)
+            // If value is None/null, we skip the filter for that row (treat as passing)
+            let cond = BooleanArray::from_iter(float_array.iter().map(|v| -> Option<bool> {
+                match v {
+                    Some(val) => {
+                        let min_ok = thresholds.min.is_none_or(|min| val >= min);
+                        let max_ok = thresholds.max.is_none_or(|max| val <= max);
+                        Some(min_ok && max_ok)
                     }
+                    None => Some(true), // Null values pass the filter (skip this condition)
                 }
-                if let Some(max) = thresholds.max {
-                    if val > max {
-                        return Ok(false);
-                    }
-                }
+            }));
+
+            // Combine with previous conditions (AND)
+            if let Some(existing) = mask {
+                mask = Some(arrow::compute::and(&existing, &cond)?);
+            } else {
+                mask = Some(cond);
             }
-            // If value is None, we skip this condition (treat as passing)
         }
 
-        Ok(true)
+        // If no conditions, keep all rows
+        Ok(mask.unwrap_or_else(|| BooleanArray::from(vec![true; num_rows])))
     }
 }
 
@@ -88,6 +112,10 @@ impl_operator! {
     name: "textstat-filter",
     kind: "filter",
     apply: |self, batch| {
-        <Self as FilterBase>::apply_filter(self, batch)
+        // Build filter mask directly on Arrow arrays (columnar)
+        let mask = <Self as FilterBase>::build_filter_mask(self, &batch)?;
+        
+        // Apply filter
+        Ok(filter_record_batch(&batch, &mask)?)
     }
 }

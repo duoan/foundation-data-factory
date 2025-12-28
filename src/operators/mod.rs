@@ -46,37 +46,12 @@ pub trait AnnotatorBase: Send + Sync {
 }
 
 /// Base trait for filters - operators that filter rows based on conditions
-/// Filters work on individual rows, not Arrow RecordBatches
+/// Filters work directly on Arrow arrays (columnar), not row-by-row
 pub trait FilterBase: Send + Sync {
-    /// Determine if a row should be kept
-    /// Returns true if the row should be kept, false if it should be filtered out
-    fn should_keep(&self, row: &Row) -> Result<bool>;
-
-    /// Default implementation: apply filter to a batch
-    /// This efficiently checks each row without converting the entire batch to rows
-    fn apply_filter(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        use arrow::array::BooleanArray;
-        use arrow::compute::filter_record_batch;
-        use crate::operators::row::extract_row_at_index;
-        use rayon::prelude::*;
-
-        let num_rows = batch.num_rows();
-
-        // Build filter mask by checking each row in parallel
-        // Only extract individual rows when needed, not the entire batch
-        let keep_mask: Result<Vec<bool>> = (0..num_rows)
-            .into_par_iter()
-            .map(|row_idx| {
-                // Extract only the row we need to check
-                let row = extract_row_at_index(&batch, row_idx)?;
-                self.should_keep(&row)
-            })
-            .collect();
-
-        // Convert to BooleanArray and apply filter
-        let boolean_array = BooleanArray::from(keep_mask?);
-        Ok(filter_record_batch(&batch, &boolean_array)?)
-    }
+    /// Build a filter mask for the entire batch
+    /// This works directly on Arrow arrays (columnar) for efficiency
+    /// Returns a BooleanArray where true means keep the row, false means filter out
+    fn build_filter_mask(&self, batch: &RecordBatch) -> Result<arrow::array::BooleanArray>;
 }
 
 pub fn create_operator(
