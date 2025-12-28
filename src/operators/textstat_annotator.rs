@@ -1,8 +1,12 @@
 use anyhow::Result;
+use arrow::array::{Float64Array, StringArray};
+use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
+use rayon::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::operators::Operator;
+use crate::operators::{Operator, with_column};
 
 pub struct TextStatAnnotator {
     column: String,
@@ -30,16 +34,7 @@ impl Operator for TextStatAnnotator {
     }
 
     fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        // For now, keep using direct Arrow operations for performance
-        // DataFusion can be used for more complex queries later
-        // This is a simpler approach that works well for columnar operations
-
-        use arrow::array::{Float64Array, StringArray};
-        use arrow::datatypes::{DataType, Field, Schema};
-        use rayon::prelude::*;
-        use std::sync::Arc;
-
-        // Find the text column
+        // Get text column
         let schema = batch.schema();
         let col_idx = schema
             .fields()
@@ -47,8 +42,8 @@ impl Operator for TextStatAnnotator {
             .position(|f| f.name().as_str() == self.column.as_str())
             .ok_or_else(|| anyhow::anyhow!("Column {} not found", self.column))?;
 
-        let text_col = batch.column(col_idx);
-        let string_array = text_col
+        let string_array = batch
+            .column(col_idx)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| anyhow::anyhow!("Column {} is not a string array", self.column))?;
@@ -62,90 +57,49 @@ impl Operator for TextStatAnnotator {
             .map(|opt_str| opt_str.map(|s| s.to_string()))
             .collect();
 
-        // Calculate metrics in parallel (columnar operations)
-        let character_count: Vec<Option<f64>> = strings
-            .par_iter()
-            .map(|opt_str| opt_str.as_ref().map(|s| s.chars().count() as f64))
-            .collect();
-        let character_count = Float64Array::from_iter(character_count);
+        // Calculate metrics (columnar operations)
+        let character_count = Arc::new(Float64Array::from_iter(
+            strings.par_iter().map(|opt_str| opt_str.as_ref().map(|s| s.chars().count() as f64)),
+        ));
 
-        let letter_count: Vec<Option<f64>> = strings
-            .par_iter()
-            .map(|opt_str| {
+        let letter_count = Arc::new(Float64Array::from_iter(
+            strings.par_iter().map(|opt_str| {
                 opt_str
                     .as_ref()
                     .map(|s| s.chars().filter(|c| c.is_alphabetic()).count() as f64)
-            })
-            .collect();
-        let letter_count = Float64Array::from_iter(letter_count);
+            }),
+        ));
 
-        let lexicon_count: Vec<Option<f64>> = strings
-            .par_iter()
-            .map(|opt_str| {
-                opt_str
-                    .as_ref()
-                    .map(|s| s.split_whitespace().count() as f64)
-            })
-            .collect();
-        let lexicon_count = Float64Array::from_iter(lexicon_count);
+        let lexicon_count = Arc::new(Float64Array::from_iter(
+            strings.par_iter().map(|opt_str| {
+                opt_str.as_ref().map(|s| s.split_whitespace().count() as f64)
+            }),
+        ));
 
-        let sentence_count: Vec<Option<f64>> = strings
-            .par_iter()
-            .map(|opt_str| {
+        let sentence_count = Arc::new(Float64Array::from_iter(
+            strings.par_iter().map(|opt_str| {
                 opt_str
                     .as_ref()
                     .map(|s| s.matches('.').count().max(1) as f64)
-            })
-            .collect();
-        let sentence_count = Float64Array::from_iter(sentence_count);
+            }),
+        ));
 
-        // Placeholder metrics (all None)
-        let placeholder_vec: Vec<Option<f64>> = vec![None; num_rows];
+        // Placeholder metrics (all NULL)
+        let placeholder = Arc::new(Float64Array::from(vec![None; num_rows]));
 
-        // Build new columns and schema
-        let mut new_columns = batch.columns().to_vec();
-        let mut new_fields = schema.fields().to_vec();
+        // Add columns using with_column (like DataFrame.with_columns)
+        let mut df = batch;
+        df = with_column(df, &format!("{}character_count", prefix), character_count, DataType::Float64)?;
+        df = with_column(df, &format!("{}letter_count", prefix), letter_count, DataType::Float64)?;
+        df = with_column(df, &format!("{}lexicon_count", prefix), lexicon_count, DataType::Float64)?;
+        df = with_column(df, &format!("{}sentence_count", prefix), sentence_count, DataType::Float64)?;
+        df = with_column(df, &format!("{}flesch_reading_ease", prefix), placeholder.clone(), DataType::Float64)?;
+        df = with_column(df, &format!("{}automated_readability_index", prefix), placeholder.clone(), DataType::Float64)?;
+        df = with_column(df, &format!("{}syllable_count", prefix), placeholder.clone(), DataType::Float64)?;
+        df = with_column(df, &format!("{}polysyllable_count", prefix), placeholder.clone(), DataType::Float64)?;
+        df = with_column(df, &format!("{}monosyllable_count", prefix), placeholder.clone(), DataType::Float64)?;
+        df = with_column(df, &format!("{}difficult_words", prefix), placeholder, DataType::Float64)?;
 
-        // Add annotation columns
-        let metrics = vec![
-            ("character_count", character_count),
-            ("letter_count", letter_count),
-            ("lexicon_count", lexicon_count),
-            ("sentence_count", sentence_count),
-            (
-                "flesch_reading_ease",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-            (
-                "automated_readability_index",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-            (
-                "syllable_count",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-            (
-                "polysyllable_count",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-            (
-                "monosyllable_count",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-            (
-                "difficult_words",
-                Float64Array::from_iter(placeholder_vec.clone()),
-            ),
-        ];
-
-        for (metric_name, metric_array) in metrics {
-            let output_col = format!("{}{}", prefix, metric_name);
-            new_columns.push(Arc::new(metric_array));
-            new_fields.push(Field::new(&output_col, DataType::Float64, true));
-        }
-
-        let new_schema = Schema::new(new_fields);
-        RecordBatch::try_new(Arc::new(new_schema), new_columns)
-            .map_err(|e| anyhow::anyhow!("Failed to create RecordBatch: {}", e))
+        Ok(df)
     }
 }

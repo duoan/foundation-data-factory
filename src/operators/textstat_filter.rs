@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 use arrow::array::{BooleanArray, Float64Array};
-use arrow::compute::filter_record_batch;
 use arrow::record_batch::RecordBatch;
-use std::collections::HashMap;
 
-use crate::operators::Operator;
+use crate::operators::{Operator, where_filter};
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -66,29 +64,26 @@ impl Operator for TextStatFilter {
     }
 
     fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        let num_rows = batch.num_rows();
         let schema = batch.schema();
-
-        // Build filter mask (columnar operation)
         let mut mask: Option<BooleanArray> = None;
 
+        // Build filter conditions (like DataFrame.where)
         for (metric_name, thresholds) in &self.metrics {
             let annotation_col = format!("{}{}", self.annotation_prefix, metric_name);
 
-            // Find column index
             let col_idx = schema
                 .fields()
                 .iter()
                 .position(|f| f.name().as_str() == annotation_col.as_str())
                 .context(format!("Column {} not found", annotation_col))?;
 
-            let col = batch.column(col_idx);
-            let float_array = col
+            let float_array = batch
+                .column(col_idx)
                 .as_any()
                 .downcast_ref::<Float64Array>()
                 .context("Column is not Float64")?;
 
-            // Build condition for this metric (columnar operation)
+            // Build condition
             let cond = BooleanArray::from_iter(float_array.iter().map(|v| -> Option<bool> {
                 match v {
                     Some(val) => {
@@ -96,13 +91,12 @@ impl Operator for TextStatFilter {
                         let max_ok = thresholds.max.is_none_or(|max| val <= max);
                         Some(min_ok && max_ok)
                     }
-                    None => Some(true), // Null values pass the filter
+                    None => Some(true), // NULL values pass
                 }
             }));
 
-            // Combine with previous conditions (AND)
+            // Combine conditions (AND)
             if let Some(existing) = mask {
-                // Manual AND combination (Arrow 15 compatibility)
                 let combined: Vec<Option<bool>> = existing
                     .iter()
                     .zip(cond.iter())
@@ -117,8 +111,10 @@ impl Operator for TextStatFilter {
             }
         }
 
-        // Apply filter mask
-        let final_mask = mask.unwrap_or_else(|| BooleanArray::from(vec![true; num_rows]));
-        Ok(filter_record_batch(&batch, &final_mask)?)
+        // Apply filter (like DataFrame.where)
+        let final_mask = mask.unwrap_or_else(|| {
+            BooleanArray::from(vec![true; batch.num_rows()])
+        });
+        where_filter(batch, &final_mask)
     }
 }
