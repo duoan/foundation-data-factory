@@ -53,20 +53,24 @@ pub trait FilterBase: Send + Sync {
     fn should_keep(&self, row: &Row) -> Result<bool>;
 
     /// Default implementation: apply filter to a batch
-    /// This converts batch to rows, checks each row, and applies the filter
+    /// This efficiently checks each row without converting the entire batch to rows
     fn apply_filter(&self, batch: RecordBatch) -> Result<RecordBatch> {
-        use crate::operators::row::batch_to_rows;
         use arrow::array::BooleanArray;
         use arrow::compute::filter_record_batch;
+        use crate::operators::row::extract_row_at_index;
         use rayon::prelude::*;
 
-        // Convert batch to rows
-        let rows = batch_to_rows(&batch)?;
+        let num_rows = batch.num_rows();
 
         // Build filter mask by checking each row in parallel
-        let keep_mask: Result<Vec<bool>> = rows
-            .par_iter()
-            .map(|row| self.should_keep(row))
+        // Only extract individual rows when needed, not the entire batch
+        let keep_mask: Result<Vec<bool>> = (0..num_rows)
+            .into_par_iter()
+            .map(|row_idx| {
+                // Extract only the row we need to check
+                let row = extract_row_at_index(&batch, row_idx)?;
+                self.should_keep(&row)
+            })
             .collect();
 
         // Convert to BooleanArray and apply filter

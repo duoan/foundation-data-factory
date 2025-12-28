@@ -60,25 +60,31 @@ impl Row {
     }
 }
 
-/// Convert a RecordBatch to a vector of Rows
-pub fn batch_to_rows(batch: &RecordBatch) -> Result<Vec<Row>> {
-    let num_rows = batch.num_rows();
+/// Extract a single row from a RecordBatch at a specific index
+/// This is more efficient than converting the entire batch to rows
+pub fn extract_row_at_index(batch: &RecordBatch, row_idx: usize) -> Result<Row> {
     let num_cols = batch.num_columns();
     let schema = batch.schema();
+    let mut values = HashMap::new();
 
+    for col_idx in 0..num_cols {
+        let field = schema.field(col_idx);
+        let column = batch.column(col_idx);
+        let value = extract_value(column, row_idx, field.data_type())?;
+        values.insert(field.name().clone(), value);
+    }
+
+    Ok(Row { values })
+}
+
+/// Convert a RecordBatch to a vector of Rows
+/// Note: This creates a full copy of all data. Use extract_row_at_index for better performance.
+pub fn batch_to_rows(batch: &RecordBatch) -> Result<Vec<Row>> {
+    let num_rows = batch.num_rows();
     let mut rows = Vec::with_capacity(num_rows);
 
     for row_idx in 0..num_rows {
-        let mut values = HashMap::new();
-
-        for col_idx in 0..num_cols {
-            let field = schema.field(col_idx);
-            let column = batch.column(col_idx);
-            let value = extract_value(column, row_idx, field.data_type())?;
-            values.insert(field.name().clone(), value);
-        }
-
-        rows.push(Row { values });
+        rows.push(extract_row_at_index(batch, row_idx)?);
     }
 
     Ok(rows)

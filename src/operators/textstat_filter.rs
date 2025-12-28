@@ -1,6 +1,4 @@
 use anyhow::{Context, Result};
-use arrow::array::*;
-use arrow::compute::filter_record_batch;
 use std::collections::HashMap;
 
 use crate::operators::{FilterBase, Row};
