@@ -3,7 +3,7 @@ use arrow::array::*;
 use arrow::compute::filter_record_batch;
 use std::collections::HashMap;
 
-use crate::operators::{FilterBase, Operator, Row};
+use crate::operators::{FilterBase, Row};
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -92,10 +92,10 @@ impl_operator! {
     apply: |self, batch| {
         use crate::operators::row::batch_to_rows;
         use rayon::prelude::*;
-        
+
         // Convert batch to rows
         let rows = batch_to_rows(&batch)?;
-        
+
         // Build filter mask by checking each row in parallel
         let keep_mask: Result<Vec<bool>> = rows
             .par_iter()
