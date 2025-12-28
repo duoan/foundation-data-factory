@@ -4,26 +4,26 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "rust-lang.rust-analyzer"
   },
-
   // General editor settings
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
     "source.fixAll": "explicit"
   },
-
   // Rust Analyzer settings
   "rust-analyzer.checkOnSave": {
     "command": "clippy",
     "allTargets": true,
-    "extraArgs": ["--", "-D", "warnings"]
+    "extraArgs": [
+      "--",
+      "-D",
+      "warnings"
+    ]
   },
   "rust-analyzer.cargo.allFeatures": true,
-
   // File associations
   "files.associations": {
     "*.rs": "rust"
   },
-
   // Exclude patterns
   "files.exclude": {
     "**/target": true
