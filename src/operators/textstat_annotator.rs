@@ -1,9 +1,6 @@
 use anyhow::Result;
-use arrow::array::{Float64Array, StringArray};
-use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use crate::operators::Operator;
 
@@ -33,7 +30,14 @@ impl Operator for TextStatAnnotator {
     }
 
     fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        // For now, keep using direct Arrow operations for performance
+        // DataFusion can be used for more complex queries later
+        // This is a simpler approach that works well for columnar operations
+
+        use arrow::array::{Float64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
         use rayon::prelude::*;
+        use std::sync::Arc;
 
         // Find the text column
         let schema = batch.schema();

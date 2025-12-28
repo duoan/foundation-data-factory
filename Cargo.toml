@@ -19,8 +19,8 @@ serde_json = "1.0"
 anyhow = "1.0"
 thiserror = "1.0"
 
-# Data processing - use Arrow/Parquet directly (like datamap-rs)
-# Using arrow 15 which is stable and doesn't have chrono conflicts
+# Data processing - use Arrow/Parquet directly
+# DataFusion can be added later for complex queries if needed
 arrow = { version = "15", features = ["ipc"] }
 parquet = { version = "15", features = ["arrow"] }
 
