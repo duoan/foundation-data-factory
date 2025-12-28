@@ -5,7 +5,7 @@ use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::operators::{AnnotatorBase, Operator};
+use crate::operators::Operator;
 
 pub struct TextStatAnnotator {
     column: String,
@@ -23,9 +23,16 @@ impl TextStatAnnotator {
     }
 }
 
-impl AnnotatorBase for TextStatAnnotator {
-    fn add_annotations(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-        // Columnar implementation: directly work on Arrow arrays
+impl Operator for TextStatAnnotator {
+    fn name(&self) -> &str {
+        "textstat-annotator"
+    }
+
+    fn kind(&self) -> &str {
+        "annotator"
+    }
+
+    fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
         use rayon::prelude::*;
 
         // Find the text column
@@ -45,13 +52,13 @@ impl AnnotatorBase for TextStatAnnotator {
         let num_rows = batch.num_rows();
         let prefix = "__annotation_textstat_";
 
-        // Convert to Vec first for parallel processing
+        // Convert to Vec for parallel processing
         let strings: Vec<Option<String>> = string_array
             .iter()
             .map(|opt_str| opt_str.map(|s| s.to_string()))
             .collect();
 
-        // Calculate metrics in parallel directly on Vec<Option<String>>
+        // Calculate metrics in parallel (columnar operations)
         let character_count: Vec<Option<f64>> = strings
             .par_iter()
             .map(|opt_str| opt_str.as_ref().map(|s| s.chars().count() as f64))
@@ -61,24 +68,34 @@ impl AnnotatorBase for TextStatAnnotator {
         let letter_count: Vec<Option<f64>> = strings
             .par_iter()
             .map(|opt_str| {
-                opt_str.as_ref().map(|s| s.chars().filter(|c| c.is_alphabetic()).count() as f64)
+                opt_str
+                    .as_ref()
+                    .map(|s| s.chars().filter(|c| c.is_alphabetic()).count() as f64)
             })
             .collect();
         let letter_count = Float64Array::from_iter(letter_count);
 
         let lexicon_count: Vec<Option<f64>> = strings
             .par_iter()
-            .map(|opt_str| opt_str.as_ref().map(|s| s.split_whitespace().count() as f64))
+            .map(|opt_str| {
+                opt_str
+                    .as_ref()
+                    .map(|s| s.split_whitespace().count() as f64)
+            })
             .collect();
         let lexicon_count = Float64Array::from_iter(lexicon_count);
 
         let sentence_count: Vec<Option<f64>> = strings
             .par_iter()
-            .map(|opt_str| opt_str.as_ref().map(|s| s.matches('.').count().max(1) as f64))
+            .map(|opt_str| {
+                opt_str
+                    .as_ref()
+                    .map(|s| s.matches('.').count().max(1) as f64)
+            })
             .collect();
         let sentence_count = Float64Array::from_iter(sentence_count);
 
-        // Placeholder metrics (all None) - create once and reuse
+        // Placeholder metrics (all None)
         let placeholder_vec: Vec<Option<f64>> = vec![None; num_rows];
 
         // Build new columns and schema
@@ -86,18 +103,35 @@ impl AnnotatorBase for TextStatAnnotator {
         let mut new_fields = schema.fields().to_vec();
 
         // Add annotation columns
-        let placeholder = Float64Array::from_iter(placeholder_vec.clone());
         let metrics = vec![
             ("character_count", character_count),
             ("letter_count", letter_count),
             ("lexicon_count", lexicon_count),
             ("sentence_count", sentence_count),
-            ("flesch_reading_ease", Float64Array::from_iter(placeholder_vec.clone())),
-            ("automated_readability_index", Float64Array::from_iter(placeholder_vec.clone())),
-            ("syllable_count", Float64Array::from_iter(placeholder_vec.clone())),
-            ("polysyllable_count", Float64Array::from_iter(placeholder_vec.clone())),
-            ("monosyllable_count", Float64Array::from_iter(placeholder_vec.clone())),
-            ("difficult_words", placeholder),
+            (
+                "flesch_reading_ease",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
+            (
+                "automated_readability_index",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
+            (
+                "syllable_count",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
+            (
+                "polysyllable_count",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
+            (
+                "monosyllable_count",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
+            (
+                "difficult_words",
+                Float64Array::from_iter(placeholder_vec.clone()),
+            ),
         ];
 
         for (metric_name, metric_array) in metrics {
@@ -109,15 +143,5 @@ impl AnnotatorBase for TextStatAnnotator {
         let new_schema = Schema::new(new_fields);
         RecordBatch::try_new(Arc::new(new_schema), new_columns)
             .map_err(|e| anyhow::anyhow!("Failed to create RecordBatch: {}", e))
-    }
-}
-
-impl_operator! {
-    TextStatAnnotator,
-    name: "textstat-annotator",
-    kind: "annotator",
-    apply: |self, batch| {
-        // Use columnar implementation from AnnotatorBase
-        <Self as AnnotatorBase>::add_annotations(self, &batch)
     }
 }

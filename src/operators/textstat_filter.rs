@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
-use arrow::array::*;
+use arrow::array::{BooleanArray, Float64Array};
 use arrow::compute::filter_record_batch;
 use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
-use crate::operators::FilterBase;
+use crate::operators::Operator;
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -56,15 +56,22 @@ impl TextStatFilter {
     }
 }
 
-impl FilterBase for TextStatFilter {
-    fn build_filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray> {
+impl Operator for TextStatFilter {
+    fn name(&self) -> &str {
+        "textstat-filter"
+    }
+
+    fn kind(&self) -> &str {
+        "filter"
+    }
+
+    fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
         let num_rows = batch.num_rows();
         let schema = batch.schema();
 
-        // Start with all rows kept (all true)
+        // Build filter mask (columnar operation)
         let mut mask: Option<BooleanArray> = None;
 
-        // Check each metric condition
         for (metric_name, thresholds) in &self.metrics {
             let annotation_col = format!("{}{}", self.annotation_prefix, metric_name);
 
@@ -82,7 +89,6 @@ impl FilterBase for TextStatFilter {
                 .context("Column is not Float64")?;
 
             // Build condition for this metric (columnar operation)
-            // If value is None/null, we skip the filter for that row (treat as passing)
             let cond = BooleanArray::from_iter(float_array.iter().map(|v| -> Option<bool> {
                 match v {
                     Some(val) => {
@@ -90,32 +96,29 @@ impl FilterBase for TextStatFilter {
                         let max_ok = thresholds.max.is_none_or(|max| val <= max);
                         Some(min_ok && max_ok)
                     }
-                    None => Some(true), // Null values pass the filter (skip this condition)
+                    None => Some(true), // Null values pass the filter
                 }
             }));
 
             // Combine with previous conditions (AND)
             if let Some(existing) = mask {
-                mask = Some(arrow::compute::and(&existing, &cond)?);
+                // Manual AND combination (Arrow 15 compatibility)
+                let combined: Vec<Option<bool>> = existing
+                    .iter()
+                    .zip(cond.iter())
+                    .map(|(e, c)| match (e, c) {
+                        (Some(true), Some(true)) => Some(true),
+                        _ => Some(false),
+                    })
+                    .collect();
+                mask = Some(BooleanArray::from_iter(combined));
             } else {
                 mask = Some(cond);
             }
         }
 
-        // If no conditions, keep all rows
-        Ok(mask.unwrap_or_else(|| BooleanArray::from(vec![true; num_rows])))
-    }
-}
-
-impl_operator! {
-    TextStatFilter,
-    name: "textstat-filter",
-    kind: "filter",
-    apply: |self, batch| {
-        // Build filter mask directly on Arrow arrays (columnar)
-        let mask = <Self as FilterBase>::build_filter_mask(self, &batch)?;
-
-        // Apply filter
-        Ok(filter_record_batch(&batch, &mask)?)
+        // Apply filter mask
+        let final_mask = mask.unwrap_or_else(|| BooleanArray::from(vec![true; num_rows]));
+        Ok(filter_record_batch(&batch, &final_mask)?)
     }
 }
