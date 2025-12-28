@@ -5,7 +5,7 @@ use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::operators::Operator;
+use crate::operators::AnnotatorBase;
 
 /// Add textstat annotation columns to a RecordBatch
 fn add_textstat_annotations(batch: RecordBatch, column: &str) -> Result<RecordBatch> {
@@ -94,11 +94,17 @@ impl TextStatAnnotator {
     }
 }
 
+impl AnnotatorBase for TextStatAnnotator {
+    fn add_annotations(&self, batch: RecordBatch) -> Result<RecordBatch> {
+        add_textstat_annotations(batch, &self.column)
+    }
+}
+
 impl_operator! {
     TextStatAnnotator,
     name: "textstat-annotator",
     kind: "annotator",
     apply: |self, batch| {
-        add_textstat_annotations(batch, &self.column)
+        <Self as AnnotatorBase>::add_annotations(self, batch)
     }
 }

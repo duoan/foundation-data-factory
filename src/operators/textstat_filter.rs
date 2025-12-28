@@ -1,10 +1,9 @@
 use anyhow::{Context, Result};
 use arrow::array::*;
 use arrow::compute::filter_record_batch;
-use arrow::record_batch::RecordBatch;
 use std::collections::HashMap;
 
-use crate::operators::Operator;
+use crate::operators::FilterBase;
 
 #[derive(Debug, Clone)]
 struct MetricThresholds {
@@ -56,14 +55,13 @@ impl TextStatFilter {
     }
 }
 
-impl_operator! {
-    TextStatFilter,
-    name: "textstat-filter",
-    kind: "filter",
-    apply: |self, batch| {
-        // Build filter mask
-        let mut mask: Option<BooleanArray> = None;
-
+impl FilterBase for TextStatFilter {
+    fn should_keep(
+        &self,
+        batch: &arrow::record_batch::RecordBatch,
+        row_idx: usize,
+    ) -> Result<bool> {
+        // Check all metrics - row is kept only if all conditions are satisfied
         for (metric_name, thresholds) in &self.metrics {
             let annotation_col = format!("{}{}", self.annotation_prefix, metric_name);
 
@@ -81,33 +79,50 @@ impl_operator! {
                 .downcast_ref::<Float64Array>()
                 .context("Column is not Float64")?;
 
-            // Build condition for this metric
-            // Note: If the annotation value is None/null, we skip the filter for that row
-            // (treat it as passing the filter condition)
-            let cond = BooleanArray::from_iter(float_array.iter().map(|v| -> Option<bool> {
-                match v {
-                    Some(val) => {
-                        let min_ok = thresholds.min.is_none_or(|min| val >= min);
-                        let max_ok = thresholds.max.is_none_or(|max| val <= max);
-                        Some(min_ok && max_ok)
-                    }
-                    None => Some(true), // Null values pass the filter (skip this condition)
-                }
-            }));
-
-            // Combine with previous conditions (AND)
-            if let Some(existing) = mask {
-                mask = Some(arrow::compute::and(&existing, &cond)?);
+            // Get value for this row (returns None if null)
+            let value = if float_array.is_valid(row_idx) {
+                Some(float_array.value(row_idx))
             } else {
-                mask = Some(cond);
+                None
+            };
+
+            // Check thresholds
+            // If value is None/null, we skip this condition (treat as passing)
+            if let Some(val) = value {
+                if let Some(min) = thresholds.min {
+                    if val < min {
+                        return Ok(false);
+                    }
+                }
+                if let Some(max) = thresholds.max {
+                    if val > max {
+                        return Ok(false);
+                    }
+                }
             }
+            // If value is None, we skip this condition (treat as passing)
         }
 
-        // Apply filter
-        if let Some(mask) = mask {
-            Ok(filter_record_batch(&batch, &mask)?)
-        } else {
-            Ok(batch)
+        Ok(true)
+    }
+}
+
+impl_operator! {
+    TextStatFilter,
+    name: "textstat-filter",
+    kind: "filter",
+    apply: |self, batch| {
+        // Build filter mask by checking each row
+        let num_rows = batch.num_rows();
+        let mut keep_mask = Vec::with_capacity(num_rows);
+
+        for row_idx in 0..num_rows {
+            let should_keep = <Self as FilterBase>::should_keep(self, &batch, row_idx)?;
+            keep_mask.push(should_keep);
         }
+
+        // Convert to BooleanArray and apply filter
+        let boolean_array = BooleanArray::from(keep_mask);
+        Ok(filter_record_batch(&batch, &boolean_array)?)
     }
 }
