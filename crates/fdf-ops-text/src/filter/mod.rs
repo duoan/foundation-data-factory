@@ -13,4 +13,3 @@ pub fn register(registry: &mut OperatorRegistry) {
     fasttext_classifier::register(registry);
     leq::register(registry);
 }
-
