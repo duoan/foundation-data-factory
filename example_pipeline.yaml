@@ -9,14 +9,13 @@ source:
 pipeline:
   - op: text.normalize
     config:
-      out_col: text_norm
       text_col: text
       lowercase: true
       strip: true
 
   - op: text.len_filter
     config:
-      text_col: text_norm
+      text_col: text
       lower_bound: 20
       upper_bound: 50000
 
@@ -55,7 +54,7 @@ pipeline:
 
   - op: text.special_char_ratio
     config:
-      text_col: text_norm
+      text_col: text
       out_col: special_ratio
 
   - op: filter.leq
@@ -74,11 +73,6 @@ pipeline:
   #     filter_mode: "document"
   #     k: -1
   #     threshold: 0.0
-
-  - op: annotate.const
-    config:
-      col: source_tag
-      value: unsupervised
 
 sink:
   kind: parquet

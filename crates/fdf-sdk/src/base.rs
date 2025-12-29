@@ -14,6 +14,26 @@ pub trait BaseFilter: Operator {
     }
 }
 
+/// Base trait for transformer operators
+/// Transformers modify existing column values (in-place or replace)
+pub trait BaseTransformer: Operator {
+    /// Build the transformation expression and target column name
+    /// Returns (expression, target_column, in_place)
+    fn build_transformation(&self) -> Result<(Expr, String, bool)>;
+
+    /// Helper method to apply transformation
+    fn apply_transformation(&self, df: LazyFrame, _ctx: &Context) -> Result<LazyFrame> {
+        let (expr, col_name, in_place) = self.build_transformation()?;
+        if in_place {
+            // Replace the existing column
+            Ok(df.with_columns([expr.alias(&col_name)]))
+        } else {
+            // Create a new column with the transformed values
+            Ok(df.with_columns([expr.alias(&col_name)]))
+        }
+    }
+}
+
 /// Base trait for annotator operators
 /// Annotators add new columns without changing row count
 pub trait BaseAnnotator: Operator {
@@ -39,6 +59,23 @@ macro_rules! impl_filter_operator {
                 ctx: &$crate::Context,
             ) -> $crate::Result<polars::prelude::LazyFrame> {
                 <$type as $crate::base::BaseFilter>::apply_filter(self, df, ctx)
+            }
+        }
+    };
+}
+
+/// Macro to automatically implement Operator for BaseTransformer types
+/// Usage: impl_transformer_operator!(MyTransformer);
+#[macro_export]
+macro_rules! impl_transformer_operator {
+    ($type:ty) => {
+        impl $crate::Operator for $type {
+            fn apply(
+                &self,
+                df: polars::prelude::LazyFrame,
+                ctx: &$crate::Context,
+            ) -> $crate::Result<polars::prelude::LazyFrame> {
+                <$type as $crate::base::BaseTransformer>::apply_transformation(self, df, ctx)
             }
         }
     };
