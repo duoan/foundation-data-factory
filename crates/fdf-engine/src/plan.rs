@@ -129,7 +129,9 @@ impl Plan {
                     if let Some(step_idx) = filtered_at_step {
                         // Write to step_XX directory (the sample before it was filtered)
                         // Create writer lazily if needed
-                        if let std::collections::hash_map::Entry::Vacant(e) = step_writers.entry(step_idx) {
+                        if let std::collections::hash_map::Entry::Vacant(e) =
+                            step_writers.entry(step_idx)
+                        {
                             let step_dir = format!("{}/step_{:02}", trace_base, step_idx);
                             std::fs::create_dir_all(&step_dir)?;
                             let step_file_path = format!("{}/{}", step_dir, file_name);

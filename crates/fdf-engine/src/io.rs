@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::spec::{SinkSpec, SourceSpec};
 
 /// Type alias for writer creation function
-type WriterFactoryFn = Box<dyn Fn(&str, Arc<Schema>) -> anyhow::Result<Box<dyn Writer>> + Send + Sync>;
+type WriterFactoryFn =
+    Box<dyn Fn(&str, Arc<Schema>) -> anyhow::Result<Box<dyn Writer>> + Send + Sync>;
 
 // Reader trait and implementations
 pub mod reader;

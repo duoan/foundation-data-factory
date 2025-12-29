@@ -5,7 +5,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 /// Type alias for writer creation function
-type WriterFactoryFn = Box<dyn Fn(&str, Arc<Schema>) -> anyhow::Result<Box<dyn Writer>> + Send + Sync>;
+type WriterFactoryFn =
+    Box<dyn Fn(&str, Arc<Schema>) -> anyhow::Result<Box<dyn Writer>> + Send + Sync>;
 
 /// Sharded writer that automatically writes to multiple shards based on samples per shard
 pub struct ShardedWriter {
