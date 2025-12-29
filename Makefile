@@ -10,6 +10,9 @@ build-dev:
 	cargo build -p fdf-cli
 	@echo "✓ Binary built: target/debug/fdf"
 
+lint:
+	cargo fmt --all -- --check
+
 # Check all crates
 check:
 	cargo check --workspace

@@ -1,5 +1,5 @@
-use crate::Result;
 use crate::op::{Operator, OperatorFactory};
+use crate::Result;
 use anyhow::anyhow;
 use std::collections::HashMap;
 

@@ -60,4 +60,3 @@ macro_rules! impl_annotator_operator {
         }
     };
 }
-

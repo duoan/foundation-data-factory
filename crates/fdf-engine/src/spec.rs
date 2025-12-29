@@ -39,4 +39,3 @@ pub struct SinkSpec {
 fn default_mode() -> String {
     "overwrite".to_string()
 }
-
