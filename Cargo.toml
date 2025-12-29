@@ -3,14 +3,26 @@ resolver = "2"
 members = [
   "crates/fdf-sdk",
   "crates/fdf-engine",
-  "crates/fdf-ops-text",
+  "crates/fdf-operators",
   "crates/fdf-cli",
 ]
 
 [workspace.dependencies]
-polars = { version = "0.45", features = ["lazy", "parquet", "strings"] }
+# Arrow for columnar data
+arrow = { version = "57.1.0" }
+arrow-array = "57.1.0"
+arrow-schema = "57.1.0"
+parquet = { version = "57.1.0", features = ["arrow"] }
+# Parallel processing
+rayon = "1.8"
+regex = "1.10"
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+# UUID generation
+uuid = { version = "1.10", features = ["v4"] }
+# Hash for deterministic random
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # fasttext = "0.4"  # Optional - requires cmake

@@ -1,11 +1,12 @@
-use crate::op::{Operator, OperatorFactory};
-use crate::Result;
-use anyhow::anyhow;
+use crate::{Operator, OperatorFactory, Result};
+use serde_yaml::Value;
 use std::collections::HashMap;
+use std::sync::Arc;
 
+/// Registry for operators
 #[derive(Default)]
 pub struct OperatorRegistry {
-    factories: HashMap<String, Box<dyn OperatorFactory>>,
+    factories: HashMap<String, Arc<dyn OperatorFactory>>,
 }
 
 impl OperatorRegistry {
@@ -15,37 +16,27 @@ impl OperatorRegistry {
 
     pub fn register<F>(&mut self, name: &str, factory: F)
     where
-        F: OperatorFactory + 'static,
+        F: Fn(&Value) -> Result<Box<dyn Operator>> + Send + Sync + 'static,
     {
-        self.factories.insert(name.to_string(), Box::new(factory));
-    }
-
-    pub fn register_fn<F>(&mut self, name: &str, factory_fn: F)
-    where
-        F: Fn(&serde_yaml::Value) -> Result<Box<dyn Operator>> + Send + Sync + 'static,
-    {
-        struct FnFactory<F> {
-            f: F,
-        }
-
-        impl<F> OperatorFactory for FnFactory<F>
+        struct FactoryFn<F>(F);
+        impl<F> OperatorFactory for FactoryFn<F>
         where
-            F: Fn(&serde_yaml::Value) -> Result<Box<dyn Operator>> + Send + Sync,
+            F: Fn(&Value) -> Result<Box<dyn Operator>> + Send + Sync,
         {
-            fn create(&self, config: &serde_yaml::Value) -> Result<Box<dyn Operator>> {
-                (self.f)(config)
+            fn create(&self, config: &Value) -> Result<Box<dyn Operator>> {
+                (self.0)(config)
             }
         }
 
         self.factories
-            .insert(name.to_string(), Box::new(FnFactory { f: factory_fn }));
+            .insert(name.to_string(), Arc::new(FactoryFn(factory)));
     }
 
-    pub fn build(&self, name: &str, config: &serde_yaml::Value) -> Result<Box<dyn Operator>> {
+    pub fn build(&self, name: &str, config: &Value) -> Result<Box<dyn Operator>> {
         let factory = self
             .factories
             .get(name)
-            .ok_or_else(|| anyhow!("Unknown operator: {}", name))?;
+            .ok_or_else(|| anyhow::anyhow!("Unknown operator: {}", name))?;
         factory.create(config)
     }
 }

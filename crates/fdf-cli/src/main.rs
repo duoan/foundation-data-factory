@@ -1,6 +1,6 @@
 use clap::Parser;
 use fdf_engine::PipelineSpec;
-use fdf_ops_text::register_all;
+use fdf_operators::register_all;
 use fdf_sdk::OperatorRegistry;
 
 #[derive(Parser)]
@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
     let mut registry = OperatorRegistry::new();
     register_all(&mut registry)?;
 
-    // Run pipeline
+    // Run pipeline (statistics are printed by run_pipeline)
     fdf_engine::run_pipeline(spec, &registry)?;
 
     println!("✓ Pipeline completed successfully");

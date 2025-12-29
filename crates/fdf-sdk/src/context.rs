@@ -1,16 +1,7 @@
-use serde::{Deserialize, Serialize};
+// Context is kept for backward compatibility but is not used in the new architecture
+// Operators in the new architecture don't need context
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Clone)]
 pub struct Context {
-    pub job_id: String,
-    pub shard_id: Option<String>,
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        Self {
-            job_id: "default".to_string(),
-            shard_id: None,
-        }
-    }
+    // Empty - not used in new architecture
 }

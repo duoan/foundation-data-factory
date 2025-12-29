@@ -1,16 +1,14 @@
 [package]
-name = "fdf-engine"
+name = "fdf-operators"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-regex = "1"
 fdf-sdk = { path = "../fdf-sdk" }
-arrow = { workspace = true }
-arrow-array = { workspace = true }
-parquet = { workspace = true }
-rayon = { workspace = true }
+arrow-schema = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-serde_json = "1.0"
 anyhow = { workspace = true }
+uuid = { workspace = true }
+# fasttext = { workspace = true }  # Optional - requires cmake

@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 fdf-engine = { path = "../fdf-engine" }
 fdf-sdk = { path = "../fdf-sdk" }
-fdf-ops-text = { path = "../fdf-ops-text" }
+fdf-operators = { path = "../fdf-operators" }
 clap = { workspace = true }
 serde_yaml = { workspace = true }
 anyhow = { workspace = true }
