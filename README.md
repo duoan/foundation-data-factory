@@ -43,7 +43,7 @@ The pipeline processes data using a row-by-row approach with `Sample` objects, w
 
 When processing, the pipeline automatically creates a structured output:
 
-```
+```text
 output/
 ├── trace/
 │   ├── step_00/          # Documents filtered at step 0
@@ -65,9 +65,11 @@ Each output file maintains the same name as its input file. Empty files are auto
 ### Text Operators
 
 **Transformers:**
+
 - `text_normalize_transformer` - Text normalization (lowercase, strip whitespace)
 
 **Filters:**
+
 - `text_len_filter` - Filter by text length range
 - `text_symbol_ratio_filter` - Filter by symbol-to-word ratio
 - `text_gopher_quality_filter` - Gopher quality heuristics (TODO)
@@ -141,22 +143,27 @@ make clippy
 
 After processing, the pipeline prints comprehensive statistics:
 
-```
+```text
 === Processing Statistics ===
-Total processing time: 12.34 seconds
-Number of documents processed: 10000
+Total processing time: 1.25 seconds
+Number of documents processed: 41348
 
 --- Pipeline Step Statistics ---
 Step 0 (add_id)
-  Processing time: 123.45ms (1.00%)
+  Processing time: 45ms (3.61%)
   Documents removed: 0 (0.00% of remaining, 0.00% of total)
 Step 1 (text_normalize_transformer)
-  Processing time: 234.56ms (1.90%)
+  Processing time: 29ms (2.33%)
   Documents removed: 0 (0.00% of remaining, 0.00% of total)
 Step 2 (text_len_filter)
-  Processing time: 345.67ms (2.80%)
-  Documents removed: 500 (5.00% of remaining, 5.00% of total)
-...
+  Processing time: 5ms (0.40%)
+  Documents removed: 8647 (17.29% of remaining, 17.29% of total)
+Step 3 (text_symbol_ratio_filter)
+  Processing time: 798ms (63.99%)
+  Documents removed: 5 (0.01% of remaining, 0.01% of total)
+============================
+
+✓ Pipeline completed successfully
 ============================
 ```
 
@@ -209,6 +216,7 @@ Then register it in the appropriate module file (e.g., `crates/fdf-operators/src
 ## Performance
 
 Rust version provides **10-100x** performance improvement over Python:
+
 - No Python interpreter overhead
 - Zero-copy data processing with Apache Arrow
 - Efficient JSON handling with `serde_json`
