@@ -1,0 +1,12 @@
+[package]
+name = "fdf-engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fdf-sdk = { path = "../fdf-sdk" }
+polars = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+

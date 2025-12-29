@@ -1,0 +1,17 @@
+[package]
+name = "fdf-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fdf"
+path = "src/main.rs"
+
+[dependencies]
+fdf-engine = { path = "../fdf-engine" }
+fdf-sdk = { path = "../fdf-sdk" }
+fdf-ops-text = { path = "../fdf-ops-text" }
+clap = { workspace = true }
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+

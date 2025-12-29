@@ -1,12 +1,22 @@
-.PHONY: build test clean fmt clippy install
+.PHONY: build test clean fmt clippy install run check run-dev
 
-# Build the project
+# Build the fdf CLI binary (release)
 build:
-	cargo build --release
+	cargo build -p fdf-cli --release
+	@echo "✓ Binary built: target/release/fdf"
+
+# Build the fdf CLI binary (debug)
+build-dev:
+	cargo build -p fdf-cli
+	@echo "✓ Binary built: target/debug/fdf"
+
+# Check all crates
+check:
+	cargo check --workspace
 
 # Run tests
 test:
-	cargo test --release
+	cargo test --workspace --release
 
 # Clean build artifacts
 clean:
@@ -18,8 +28,18 @@ fmt:
 
 # Run clippy
 clippy:
-	cargo clippy --all-targets --all-features -- -D warnings
+	cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # Install the binary
 install: build
-	cargo install --path .
+	cargo install --path crates/cli
+
+# Run example pipeline (Rust)
+run:
+	@echo "Running example pipeline (Rust)..."
+	./target/release/fdf -c example_pipeline.yaml || ./target/debug/fdf -c example_pipeline.yaml
+
+# Run example pipeline (Rust, dev)
+run-dev:
+	@echo "Running example pipeline (Rust, dev)..."
+	./target/debug/fdf -c example_pipeline.yaml
