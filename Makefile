@@ -2,12 +2,12 @@
 
 # Build the fdf CLI binary (release)
 build:
-	cargo build -p fdf-cli --release
+	cargo build --release
 	@echo "✓ Binary built: target/release/fdf"
 
 # Build the fdf CLI binary (debug)
 build-dev:
-	cargo build -p fdf-cli
+	cargo build
 	@echo "✓ Binary built: target/debug/fdf"
 
 lint:
@@ -35,7 +35,7 @@ clippy:
 
 # Install the binary
 install: build
-	cargo install --path crates/cli
+	cargo install --path .
 
 # Run example pipeline (Rust)
 run:
