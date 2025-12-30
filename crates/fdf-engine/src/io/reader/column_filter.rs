@@ -13,20 +13,31 @@ pub struct ColumnFilterReader {
 
 impl ColumnFilterReader {
     /// Create a new ColumnFilterReader
-    /// 
+    ///
     /// # Arguments
     /// * `inner` - The inner reader to wrap
     /// * `column_mapping` - Mapping from new column name to original column name
     ///   Example: {"id": "id", "text": "text"} means keep columns "id" and "text" with same names
-    pub fn new(inner: Box<dyn Reader>, column_mapping: HashMap<String, String>) -> anyhow::Result<Self> {
+    pub fn new(
+        inner: Box<dyn Reader>,
+        column_mapping: HashMap<String, String>,
+    ) -> anyhow::Result<Self> {
         // Validate that all mapped columns exist in the schema
         let original_schema = inner.schema();
         for original_name in column_mapping.values() {
-            if !original_schema.fields().iter().any(|f| f.name() == original_name) {
+            if !original_schema
+                .fields()
+                .iter()
+                .any(|f| f.name() == original_name)
+            {
                 return Err(anyhow::anyhow!(
                     "Column '{}' not found in source schema. Available columns: {:?}",
                     original_name,
-                    original_schema.fields().iter().map(|f| f.name()).collect::<Vec<_>>()
+                    original_schema
+                        .fields()
+                        .iter()
+                        .map(|f| f.name())
+                        .collect::<Vec<_>>()
                 ));
             }
         }
@@ -37,8 +48,16 @@ impl ColumnFilterReader {
         } else {
             let mut fields = Vec::new();
             for (new_name, original_name) in &column_mapping {
-                if let Some(field) = original_schema.fields().iter().find(|f| f.name() == original_name) {
-                    fields.push(Field::new(new_name.clone(), field.data_type().clone(), field.is_nullable()));
+                if let Some(field) = original_schema
+                    .fields()
+                    .iter()
+                    .find(|f| f.name() == original_name)
+                {
+                    fields.push(Field::new(
+                        new_name.clone(),
+                        field.data_type().clone(),
+                        field.is_nullable(),
+                    ));
                 }
             }
             Arc::new(Schema::new(fields))
@@ -89,4 +108,3 @@ impl Reader for ColumnFilterReader {
         &self.filtered_schema
     }
 }
-

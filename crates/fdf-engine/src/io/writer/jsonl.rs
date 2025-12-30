@@ -33,7 +33,7 @@ impl JsonlWriter {
         if self.buffer.is_empty() {
             return Ok(());
         }
-        
+
         // Serialize all samples in the buffer to a single string for better performance
         // This reduces the number of write syscalls
         let mut output = String::with_capacity(self.buffer.len() * 200); // Estimate 200 bytes per sample
@@ -43,12 +43,12 @@ impl JsonlWriter {
             output.push_str(&json_str);
             output.push('\n');
         }
-        
+
         // Write all at once
         self.writer.write_all(output.as_bytes())?;
         self.samples_written += self.buffer.len();
         self.buffer.clear();
-        
+
         // Don't flush BufWriter here - let it buffer automatically
         // Only flush when closing or when buffer is very large
         Ok(())
