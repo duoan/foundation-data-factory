@@ -9,5 +9,10 @@ pub trait Reader: Iterator<Item = anyhow::Result<Sample>> {
     fn schema(&self) -> &Arc<Schema>;
 }
 
+pub mod column_filter;
+pub mod huggingface;
 pub mod jsonl;
+pub mod multi_file;
 pub mod parquet;
+
+pub use multi_file::MultiFileReader;

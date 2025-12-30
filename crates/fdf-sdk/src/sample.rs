@@ -64,6 +64,20 @@ impl Sample {
         self.0.get(k)
     }
 
+    /// Get a mutable reference to a string value for in-place modification
+    /// Returns None if the key doesn't exist or the value is not a string
+    pub fn get_str_mut(&mut self, k: &str) -> Option<&mut String> {
+        if let Value::Object(ref mut map) = self.0 {
+            if let Some(Value::String(ref mut s)) = map.get_mut(k) {
+                Some(s)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     // --- setters ---
     pub fn set_str(&mut self, k: impl Into<String>, v: impl Into<String>) {
         if let Value::Object(ref mut map) = self.0 {

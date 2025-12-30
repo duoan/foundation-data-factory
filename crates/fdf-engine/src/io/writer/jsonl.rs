@@ -22,7 +22,7 @@ impl JsonlWriter {
             writer,
             schema,
             buffer: Vec::new(),
-            partition_size: 10000, // Default partition size
+            partition_size: 50000, // Increased buffer size for better performance
             path: path.to_string(),
             samples_written: 0,
         })
@@ -30,14 +30,27 @@ impl JsonlWriter {
 
     /// Flush buffer to disk
     fn flush(&mut self) -> anyhow::Result<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+        
+        // Serialize all samples in the buffer to a single string for better performance
+        // This reduces the number of write syscalls
+        let mut output = String::with_capacity(self.buffer.len() * 200); // Estimate 200 bytes per sample
         for sample in &self.buffer {
             let json_value = sample.as_value();
-            serde_json::to_writer(&mut self.writer, json_value)?;
-            self.writer.write_all(b"\n")?;
+            let json_str = serde_json::to_string(json_value)?;
+            output.push_str(&json_str);
+            output.push('\n');
         }
+        
+        // Write all at once
+        self.writer.write_all(output.as_bytes())?;
         self.samples_written += self.buffer.len();
-        self.writer.flush()?;
         self.buffer.clear();
+        
+        // Don't flush BufWriter here - let it buffer automatically
+        // Only flush when closing or when buffer is very large
         Ok(())
     }
 }
@@ -57,6 +70,8 @@ impl Writer for JsonlWriter {
     fn close(mut self: Box<Self>) -> anyhow::Result<bool> {
         // Flush remaining samples
         self.flush()?;
+        // Now flush the BufWriter to ensure all data is written to disk
+        self.writer.flush()?;
         let has_data = self.samples_written > 0;
 
         // If no data was written, delete the file

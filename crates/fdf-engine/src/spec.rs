@@ -13,6 +13,9 @@ pub struct SourceSpec {
     pub uris: Vec<String>,
     #[serde(default)]
     pub columns: ColumnMapping,
+    /// Batch size for reading parquet files. If None, uses default batch size.
+    #[serde(default)]
+    pub batch_size: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -102,9 +105,15 @@ pub struct SinkSpec {
     pub samples_per_shard: usize, // Number of samples per shard
     #[serde(default)]
     pub shard_name_pattern: Option<String>, // Pattern for shard file names, e.g., "{base}.part-{shard_id:08}.{ext}" or "{base}-{shard_id:04d}.{ext}"
-                                            // Trace and error outputs are always enabled by default
-                                            // Trace: automatically creates {uri}/trace/step_xx/ and {uri}/final/
-                                            // Error: automatically creates {uri}/error/
+    #[serde(default = "default_enable_trace")]
+    pub enable_trace: bool, // Enable trace output (creates {uri}/trace/step_xx/). Disable for better performance.
+                            // Trace and error outputs are enabled by default
+                            // Trace: automatically creates {uri}/trace/step_xx/ and {uri}/final/
+                            // Error: automatically creates {uri}/error/
+}
+
+fn default_enable_trace() -> bool {
+    true // Default to enabled for backward compatibility
 }
 
 fn default_mode() -> String {

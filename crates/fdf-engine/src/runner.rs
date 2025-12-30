@@ -24,6 +24,41 @@ pub fn run_pipeline(spec: PipelineSpec, registry: &OperatorRegistry) -> Result<(
     );
     println!("Number of documents processed: {}", stats.num_documents);
 
+    // Print I/O statistics
+    let write_time_percent = if elapsed.as_millis() > 0 {
+        (stats.write_time_ms as f64 * 100.0) / elapsed.as_millis() as f64
+    } else {
+        0.0
+    };
+
+    // Calculate estimated read time (total time minus processing and write time)
+    let total_processing_time_ms: u64 = stats
+        .step_statistics
+        .iter()
+        .map(|s| s.processing_time_ms)
+        .sum();
+    let estimated_read_time_ms =
+        if elapsed.as_millis() > (total_processing_time_ms + stats.write_time_ms) as u128 {
+            elapsed.as_millis() - (total_processing_time_ms + stats.write_time_ms) as u128
+        } else {
+            0
+        };
+    let read_time_percent = if elapsed.as_millis() > 0 {
+        (estimated_read_time_ms as f64 * 100.0) / elapsed.as_millis() as f64
+    } else {
+        0.0
+    };
+
+    println!("\n--- I/O Statistics ---");
+    println!(
+        "Read time (estimated): {:.2}ms ({:.2}%)",
+        estimated_read_time_ms, read_time_percent
+    );
+    println!(
+        "Write time: {:.2}ms ({:.2}%)",
+        stats.write_time_ms, write_time_percent
+    );
+
     if !stats.step_statistics.is_empty() {
         println!("\n--- Pipeline Step Statistics ---");
         for step_stat in &stats.step_statistics {

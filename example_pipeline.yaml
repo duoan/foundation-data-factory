@@ -1,10 +1,11 @@
 source:
-  kind: parquet
+  kind: huggingface
   uris:
-    - /Users/duoan/Downloads/unsupervised-00000-of-00001.parquet
+    - HuggingFaceFW/fineweb-edu/blob/main/sample/10BT/000_00000.parquet
   columns:
     id: id
     text: text
+  batch_size: 1000000
 
 pipeline:
   - add_id:
@@ -25,9 +26,11 @@ pipeline:
       max_symbol_to_word_ratio: 0.30
 
 sink:
-  kind: jsonline
+  kind: parquet
   uri: ./output/
   mode: overwrite
+  samples_per_shard: 10000
+  enable_trace: false
   # Trace and error outputs are automatically enabled:
   # - output/trace/step_xx/ for documents filtered at each step
   # - output/final/ for documents that passed all filters
