@@ -2,6 +2,7 @@ source:
   kind: huggingface
   uris:
     - HuggingFaceFW/fineweb-edu/blob/main/sample/10BT/000_00000.parquet
+    - HuggingFaceFW/fineweb-edu/blob/main/sample/10BT/001_00000.parquet
   columns:
     id: id
     text: text
