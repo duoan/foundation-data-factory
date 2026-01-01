@@ -9,8 +9,9 @@ use std::fs::File;
 use std::sync::Arc;
 
 pub struct ParquetWriter {
-    writer: ArrowWriter<File>,
-    schema: Arc<Schema>,
+    writer: Option<ArrowWriter<File>>,
+    input_schema: Arc<Schema>,
+    actual_schema: Option<Arc<Schema>>,
     buffer: Vec<Sample>,
     partition_size: usize,
     path: String,           // Store path for potential deletion
@@ -19,11 +20,10 @@ pub struct ParquetWriter {
 
 impl ParquetWriter {
     pub fn new(path: &str, schema: Arc<Schema>) -> anyhow::Result<Self> {
-        let output_file = File::create(path)?;
-        let writer = ArrowWriter::try_new(output_file, schema.clone(), None)?;
         Ok(Self {
-            writer,
-            schema,
+            writer: None, // Will be created on first flush
+            input_schema: schema,
+            actual_schema: None,
             buffer: Vec::new(),
             partition_size: 10000, // Default partition size
             path: path.to_string(),
@@ -31,28 +31,34 @@ impl ParquetWriter {
         })
     }
 
-    /// Flush buffer to disk
-    fn flush(&mut self) -> anyhow::Result<()> {
+    /// Initialize the ArrowWriter with the actual schema from samples
+    fn init_writer(&mut self) -> anyhow::Result<()> {
+        if self.writer.is_some() {
+            return Ok(());
+        }
+
         if self.buffer.is_empty() {
             return Ok(());
         }
 
-        let batch = self.samples_to_batch(&self.buffer, &self.schema)?;
-        self.samples_written += self.buffer.len();
-        self.writer.write(&batch)?;
-        self.buffer.clear();
+        // Build schema from actual samples (includes annotator fields)
+        let batch_schema = self.build_schema_from_samples(&self.buffer, &self.input_schema)?;
+        self.actual_schema = Some(batch_schema.clone());
+
+        // Now create the ArrowWriter with the complete schema
+        let output_file = File::create(&self.path)?;
+        let writer = ArrowWriter::try_new(output_file, batch_schema, None)?;
+        self.writer = Some(writer);
+
         Ok(())
     }
 
-    fn samples_to_batch(
+    /// Build schema from samples, including all fields (input + annotator fields)
+    fn build_schema_from_samples(
         &self,
         samples: &[Sample],
         input_schema: &Schema,
-    ) -> anyhow::Result<RecordBatch> {
-        if samples.is_empty() {
-            return Err(anyhow::anyhow!("Cannot create batch from empty samples"));
-        }
-
+    ) -> anyhow::Result<Arc<Schema>> {
         // Convert Sample to Value for processing
         let values: Vec<Value> = samples.iter().map(|s| s.as_value().clone()).collect();
 
@@ -74,10 +80,8 @@ impl ParquetWriter {
             }
         }
 
-        // Build arrays for each field
-        let mut arrays = Vec::new();
+        // Build fields with types
         let mut fields = Vec::new();
-
         for field_name in &all_field_names {
             // Determine field type from first non-null value
             let data_type = if let Some(original_field) = input_schema
@@ -101,7 +105,48 @@ impl ParquetWriter {
                     .unwrap_or(DataType::Utf8)
             };
 
-            fields.push(Field::new(field_name, data_type.clone(), true));
+            fields.push(Field::new(field_name, data_type, true));
+        }
+
+        Ok(Arc::new(Schema::new(fields)))
+    }
+
+    /// Flush buffer to disk
+    fn flush(&mut self) -> anyhow::Result<()> {
+        if self.buffer.is_empty() {
+            return Ok(());
+        }
+
+        // Initialize writer on first flush if not already initialized
+        self.init_writer()?;
+
+        // Use actual_schema for batch creation (includes all fields)
+        let actual_schema = self.actual_schema.as_ref().unwrap();
+        let batch = self.samples_to_batch(&self.buffer, actual_schema)?;
+        self.samples_written += self.buffer.len();
+        self.writer.as_mut().unwrap().write(&batch)?;
+        self.buffer.clear();
+        Ok(())
+    }
+
+    fn samples_to_batch(
+        &self,
+        samples: &[Sample],
+        target_schema: &Arc<Schema>,
+    ) -> anyhow::Result<RecordBatch> {
+        if samples.is_empty() {
+            return Err(anyhow::anyhow!("Cannot create batch from empty samples"));
+        }
+
+        // Convert Sample to Value for processing
+        let values: Vec<Value> = samples.iter().map(|s| s.as_value().clone()).collect();
+
+        // Build arrays for each field in target_schema
+        let mut arrays = Vec::new();
+
+        for field in target_schema.fields() {
+            let field_name = field.name();
+            let data_type = field.data_type();
 
             // Build array
             let array: Arc<dyn arrow::array::Array> = match data_type {
@@ -161,8 +206,7 @@ impl ParquetWriter {
             arrays.push(array);
         }
 
-        let schema = Schema::new(fields);
-        Ok(RecordBatch::try_new(Arc::new(schema), arrays)?)
+        Ok(RecordBatch::try_new(Arc::clone(target_schema), arrays)?)
     }
 }
 
@@ -179,13 +223,15 @@ impl Writer for ParquetWriter {
     }
 
     fn close(mut self: Box<Self>) -> anyhow::Result<bool> {
-        // Flush remaining samples
+        // Flush remaining samples (this will initialize writer if needed)
         self.flush()?;
         let has_data = self.samples_written > 0;
-        self.writer.close()?;
 
-        // If no data was written, delete the file
-        if !has_data {
+        // Close writer if it was initialized
+        if let Some(writer) = self.writer {
+            writer.close()?;
+        } else if !has_data {
+            // If no data was written and writer was never initialized, delete the file
             let _ = std::fs::remove_file(&self.path);
         }
 
@@ -193,6 +239,7 @@ impl Writer for ParquetWriter {
     }
 
     fn schema(&self) -> &Arc<Schema> {
-        &self.schema
+        // Return actual_schema if available, otherwise input_schema
+        self.actual_schema.as_ref().unwrap_or(&self.input_schema)
     }
 }
