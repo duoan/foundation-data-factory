@@ -1,5 +1,8 @@
 # Foundation Data Factory
 
+**I started a new scalable architecture [mega-data-factory
+](https://github.com/duoan/mega-data-factory)**
+
 High-performance data processing pipeline for LLM datasets using Rust and Apache Arrow.
 
 ## Quick Start
